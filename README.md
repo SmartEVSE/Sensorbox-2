@@ -17,12 +17,10 @@ Modbus RTU address is fixed to 0x0A, speed is 9600 bps
 
    
 Input Registers (FC=04)(Read Only):
-  
- 
 
     Register  Register  
      Address   length (16 bits)
-     0x0000      1       Sensorbox version 2             = 0x0014 = 4 wire, CW rotation
+     0x0000      1       Sensorbox version 2             = 0x0014 (2 lsb mirror the 3/4 Wire and Rotation configuration data)
                                                            0x0015 = 4 wire, CCW rotation
                                                            0x0016 = 3 wire, CW rotation      
                                                            0x0017 = 3 wire, CCW rotation  
@@ -36,6 +34,20 @@ Input Registers (FC=04)(Read Only):
      0x000E      2       Amps L1 (32 bit floating point), CT imput 1
      0x0010      2       Amps L2 (32 bit floating point), CT input 2
      0x0012      2       Amps L3 (32 bit floating point), CT input 3
+     
+     when sensorbox software version >= 0x01xx, the following extra registers are available
+
+     0x0014      1       WiFi Connection Status  xxxxxACL xxxxxxWW = WiFi mode (00=Wifi Off, 01=On, 10=portal started)
+                                                      ||\_ Local Time Set
+                                                      |\__ Connected to WiFi
+                                                      \___ AP_STA mode (portal) active
+     0x0015      1       Time Hour(msb) Minute(lsb)
+     0x0016      1       Time Month(msb) Day(lsb)
+     0x0017      1       Time Year(msb) Weekday(lsb)
+     0x0018      2       IP address Sensorbox
+     0x001A      2       MAC Sensorbox (4 LSB bytes) http://SmartEVSE-012345.local can be derived from this
+     0x001C      4       Password portal (8 bytes)
+ 
     
     Holding Registers (FC=06)(Write):
     
@@ -43,6 +55,7 @@ Input Registers (FC=04)(Read Only):
      Address   length (16 bits) 
      0x0800      1       Field rotation setting (bit 0)      00000000 0000000x -> 0= Rotation right 1= Rotation Left
                          3/4 wire configuration (bit 1)      00000000 000000x0 -> 0= 4Wire, 1= 3Wire
+     0x0801      1       Set WiFi mode                       00000000 000000xx -> 00 = disabled, 01 = enabled, 02 = start portal.   
 
 ## Example:
 
