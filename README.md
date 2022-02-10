@@ -3,13 +3,14 @@ Sensorbox2 measures the current(A) and current direction for up to three phases 
 It can also receive these measurements directly from a (D)SMR5 smart meters P1 port.
 These measurements are then sent every two seconds to the connected SmartEVSE(s).
 
-The Sensorbox2 uses a PIC microcontroller which currently does all the processing. It takes the measurements from the CT inputs and P1 port and can send the data over the RS485 bus.
-It will be programmed initially by the ESP32 module. At powerup the ESP32 looks for a Sensorbox2.hex file in the /data folder and, when found programs the PIC18F26K40 microcontroller.
+The Sensorbox2 uses a PIC microcontroller which does the CT measurements and sends this information to the ESP32.
+The ESP32 processes the P1 port (Smart Meter connection) data and RS485 communication to the SmartESVE.
+The PIC will be (re)programmed by the ESP32 module. At powerup the ESP32 looks for a PIC18F26K40.hex file in the /data folder and, when found programs the PIC18F26K40 microcontroller.
 
-Please note that this also means that the PIC has control over the RS485 bus. If you want full controll, keep the PIC in reset by holding the PIC reset line low.
+This code uses Arduino core 2.0.2 as it has critical bug fixes, and much better Uart drivers.
+Modbus handling is done with the eModbus library.
+The platformio.ini file should install all necessary libraries automatically.
 
-I'll release a version of the PIC firmware soon that will only do the CT measurements, and will not use the RS485 bus, nor use the P1 port.
-On this version the ESP32 will handle everything else.
 
 ## Modbus Registers
 
@@ -20,10 +21,10 @@ Input Registers (FC=04)(Read Only):
 
     Register  Register  
      Address   length (16 bits)
-     0x0000      1       Sensorbox version 2             = 0x0014 (2 lsb mirror the 3/4 Wire and Rotation configuration data)
-                                                           0x0015 = 4 wire, CCW rotation
-                                                           0x0016 = 3 wire, CW rotation      
-                                                           0x0017 = 3 wire, CCW rotation  
+     0x0000      1       Sensorbox version 2             = 0x0114 (2 lsb mirror the 3/4 Wire and Rotation configuration data)
+                                                           0x0115 = 4 wire, CCW rotation
+                                                           0x0116 = 3 wire, CW rotation      
+                                                           0x0117 = 3 wire, CCW rotation  
      0x0001      1       DSMR Version(MSB),CT's or P1(LSB) 0x3283 = DSMR version 50, P1 port connected (0x80) CT's Used (0x03)                    
      0x0002      2       Volts L1 (32 bit floating point), Smartmeter P1 data
      0x0004      2       Volts L2 (32 bit floating point), Smartmeter P1 data
@@ -35,7 +36,7 @@ Input Registers (FC=04)(Read Only):
      0x0010      2       Amps L2 (32 bit floating point), CT input 2
      0x0012      2       Amps L3 (32 bit floating point), CT input 3
      
-     when sensorbox software version >= 0x01xx, the following extra registers are available
+     with sensorbox software version >= 0x01xx, the following extra registers are available
 
      0x0014      1       WiFi Connection Status  xxxxxACL xxxxxxWW = WiFi mode (00=Wifi Off, 01=On, 10=portal started)
                                                       ||\_ Local Time Set
