@@ -206,13 +206,13 @@ void WiFiStationGotIp(WiFiEvent_t event, WiFiEventInfo_t info) {
 void onWsEvent(AsyncWebSocket * webServer, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
   if (type == WS_EVT_CONNECT) {
     Serial.printf("ws[%s][%u] connect\n", webServer->url(), client->id());
-    client->printf("Hello Client %u :)", client->id());
-    client->ping();
+//    client->printf("Hello Client %u :)", client->id());
+//    client->ping();
     
   } else if (type == WS_EVT_DISCONNECT) {
     Serial.printf("ws[%s][%u] disconnect\n", webServer->url(), client->id());
   } else if(type == WS_EVT_PONG){
-   Serial.printf("ws[%s][%u] pong[%u]: %s\n", webServer->url(), client->id(), len, (len)?(char*)data:"");
+//   Serial.printf("ws[%s][%u] pong[%u]: %s\n", webServer->url(), client->id(), len, (len)?(char*)data:"");
   } else if (type == WS_EVT_DATA){
 
     Serial.println("Data received: ");
@@ -569,9 +569,13 @@ void P1Extract() {
   char *ret;
   float L1Power = 0, L2Power = 0, L3Power = 0;
   float L1PowerReturn = 0, L2PowerReturn = 0, L3PowerReturn = 0;
-  //float TotalPower, TotalPowerReturn;
+  bool fluvius = false;
+  float TotalPower, TotalPowerReturn;
 
   DSMRver = 0;
+
+  ret = strstr((const char *)P1data,(const char *)"/FLU5\\");                 // Belgium Fluvius SMR 5 meter
+  if (ret != NULL) fluvius = true;
 
   ret = strstr((const char *)P1data,(const char *)":0.2.8");                  // DSMR version
   if (ret != NULL) DSMRver = atoi((const char *)ret+7);
@@ -606,10 +610,19 @@ void P1Extract() {
   ret = strstr((const char *)P1data,(const char *)":62.7.0");
   if (ret != NULL) L3PowerReturn = atof((const char *)ret+8)*1000;
 
-  // ret = strstr((const char *)P1_data,(const far char *)":1.7.0");           // Total Power from Grid
-  // Total_power = atof((const char *)ret+7)*1000;
-  // ret = strstr((const char *)P1_data,(const far char *)":2.7.0");           // Total Power delivered to Grid (Watt)
-  // Total_power_return = atof((const char *)ret+7)*1000;
+  ret = strstr((const char *)P1data,(const char *)":1.7.0");                  // Total Power from Grid
+  TotalPower = atof((const char *)ret+7)*1000;
+  ret = strstr((const char *)P1data,(const char *)":2.7.0");                  // Total Power delivered to Grid (Watt)
+  TotalPowerReturn = atof((const char *)ret+7)*1000;
+
+  // Fluvius meter, but no voltage on phase 2 and 3
+  if (fluvius && DSMRver == 0 && Volts[1] == 1 && Volts[2] == 1) {
+    // So it's a one phase meter without :21.7.0 data (some models of the Sagemcom S211)
+    // we can use the Total power measurements instead.
+    L1Power = TotalPower;
+    L1PowerReturn = TotalPowerReturn;
+    DSMRver = 50;
+  }
 
   Irms[0] = (L1Power-L1PowerReturn)/Volts[0];                              		// Irms (Amps *1)
   Irms[1] = (L2Power-L2PowerReturn)/Volts[1];
@@ -667,6 +680,10 @@ void P1Receive() {
     P1LastMillis = millis();
 
     if (crcP1 == csP1) {                                                        // check if crc's match
+      // Send telegram to debug output
+      for (uint16_t x=0; x<P1length+4; x++) Serial.printf("%c",P1data[x]);
+      Serial.print("\n");
+
       P1Extract();                                                              // Extract Voltage and Current values from Smart Meter telegram
     } else {
       LOG_E("P1 crc error, length %d\n", P1length);
@@ -1075,11 +1092,13 @@ void setup() {
   // Sensorbox 2 (hwver 1.10) have programmed ECDSA-256 keys stored in nvs
   // Unused for now.
   if (preferences.begin("KeyStorage", true) == true) {        // readonly
-    uint16_t hwversion = preferences.getUChar("hwversion");   // 0x020A (02 = Sensorbox-2 0A = hwver 1.10)
+    uint16_t hwversion = preferences.getUShort("hwversion");   // 0x020A (02 = Sensorbox-2 0A = hwver 1.10)
     uint32_t serialnr = preferences.getUInt("serialnr");      
     String ec_private = preferences.getString("ec_private");
     String ec_public = preferences.getString("ec_public");
     preferences.end(); 
+//    Serial.printf("hwversion %04x serialnr:%u \n",hwversion, serialnr);
+//    Serial.print(ec_public);
 
   } else Serial.print("No KeyStorage found in nvs!\n");
 
