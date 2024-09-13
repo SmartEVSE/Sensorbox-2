@@ -70,7 +70,7 @@
 #include "main.h"
 #include "radix.h"
 #include "prg_pic.h"
-
+#include <SPI.h>
 
 const char* NTP_SERVER = "europe.pool.ntp.org";
 // Specification of the Time Zone string:
