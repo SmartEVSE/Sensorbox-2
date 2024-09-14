@@ -439,7 +439,7 @@ unsigned int CRC16(unsigned int crc, unsigned char *buf, int len)
 // CT data is measured by the PIC, is send on a serial line to Serial0 of the ESP32
 // The final calculations and phase angle corrections are done by the ESP32.  
 // We use / as start line char, ! is end of line, just like a P1 message the data is followed by a CRC16 checksum
-// Called by T1Task every 100ms
+// Called by P1Task every 100ms
 //
 void CTReceive() {
 	char *ret, ch;
@@ -640,7 +640,7 @@ void P1Extract() {
 
 // ----------------------------------------------------------------------------------------------------------------
 //  Reads P1 data from Serial2, checks crc, and stores in P1data buffer
-//  Called by T1Task every 100ms
+//  Called by P1Task every 100ms
 //
 void P1Receive() {
   uint8_t RXbyte;
