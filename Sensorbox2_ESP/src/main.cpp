@@ -188,10 +188,10 @@ void read_settings(bool write) {
 void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
     Serial.print("WiFi lost connection.\n");
     // try to reconnect when not connected to AP
-    if (WiFi.getMode() != WIFI_AP_STA && WIFImode) {                        
-        Serial.print("Trying to Reconnect\n");
-        WiFi.begin();
+    if (WIFImode == 1) {
+        WiFi.reconnect();                                               // recommended reconnection strategy by ESP-IDF manual
     }
+
 }
 
 void WiFiStationGotIp(WiFiEvent_t event, WiFiEventInfo_t info) {
