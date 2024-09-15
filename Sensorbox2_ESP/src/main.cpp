@@ -56,7 +56,6 @@
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <ESPAsync_WiFiManager.h>
 #include <ESPmDNS.h>
 #include <Update.h>
 #include <esp_task_wdt.h>
@@ -89,11 +88,8 @@ struct tm timeinfo;
 
 AsyncWebServer webServer(80);
 AsyncWebSocket ws("/ws");           // data to/from webpage
-DNSServer dnsServer;
 IPAddress localIp;
 String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
-
-ESPAsync_WiFiManager ESPAsync_wifiManager(&webServer, &dnsServer, APhostname.c_str());
 
 // SSID and PW for your Router
 String Router_SSID;
@@ -330,15 +326,6 @@ void StartwebServer(void) {
 
 // Setup Wifi 
 void WiFiSetup(void) {
-
-    //ESPAsync_wifiManager.resetSettings();   //reset saved settings
-
-    ESPAsync_wifiManager.setDebugOutput(true);
-    // Set config portal channel, default = 1. Use 0 => random channel from 1-13
-    ESPAsync_wifiManager.setConfigPortalChannel(0);
-    ESPAsync_wifiManager.setAPStaticIPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
-    // Portal will be available 2 minutes to connect to, then close. (if connected within this time, it will remain active)
-    ESPAsync_wifiManager.setConfigPortalTimeout(120);   
 
     localIp = WiFi.localIP();
 
