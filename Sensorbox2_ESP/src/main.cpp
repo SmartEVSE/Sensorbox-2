@@ -360,8 +360,6 @@ void SetupNetworkTask(void * parameter) {
 
   WiFiSetup();
   StartwebServer();
-delay(5000);
-WIFImode = 2;
   while(1) {
 
     // retrieve time from NTP server
@@ -730,10 +728,11 @@ void P1Task(void * parameter) {
     // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
     if (dataready > datamemory) datamemory = dataready;
 
-/*    if (!(datamemory & 0x80 ) && !(datamemory & 0x03))                        // if both P1 and CT are not connected,
+    //if (!(datamemory & 0x80 ) && !(datamemory & 0x03)) TODO                       // if both P1 and CT are not connected,
+    if (!(datamemory & 0x80 ) && !(datamemory & 0x03) && WiFi.status() != WL_CONNECTED)                        // if both P1 and CT are not connected,
                                                                                 // we go to wifimode 2 smartconfig
         WIFImode = 2;
-*/
+
     // Every ~2 seconds send measurement data over websockets to browser(s)
     if (socketupdate == 20 && ws.count() && WiFi.status() == WL_CONNECTED) {
 
