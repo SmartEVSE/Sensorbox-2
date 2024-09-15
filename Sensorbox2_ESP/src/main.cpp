@@ -373,7 +373,8 @@ void SetupNetworkTask(void * parameter) {
 
   WiFiSetup();
   StartwebServer();
-
+delay(5000);
+WIFImode = 2;
   while(1) {
 
     // retrieve time from NTP server
@@ -383,12 +384,35 @@ void SetupNetworkTask(void * parameter) {
     ws.cleanupClients();
 
     if (WIFImode == 2 && WiFi.getMode() != WIFI_AP_STA) {
-      Serial.print("Start Portal...\n");
-      StopwebServer();
-      ESPAsync_wifiManager.startConfigPortal(APhostname.c_str(), APpassword.c_str());         // blocking until connected or timeout.
-      WIFImode = 1;
-      write_settings();
-      StartwebServer();       //restart webserver
+        Serial.print("Start Portal...\n");
+        StopwebServer();
+        //Init WiFi as Station, start SmartConfig
+        WiFi.mode(WIFI_AP_STA);
+        char SmartConfigKey[] = "0123456789abcdef";
+        WiFi.beginSmartConfig(SC_TYPE_ESPTOUCH_V2, SmartConfigKey);
+        //WiFi.beginSmartConfig(SC_TYPE_ESPTOUCH_V2, "0123456789abcdef");
+
+        //Wait for SmartConfig packet from mobile.
+        _LOG_V("Waiting for SmartConfig.\n");
+        while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED)) {
+        // Also start Serial CLI for entering AP and password.
+//            ProvisionCli();
+            delay(100);
+        }                       // loop until connected or Wifi setup menu is exited.
+
+        delay(2000);            // give smartConfig time to send provision status back to the users phone.
+
+        if (WiFi.status() == WL_CONNECTED) {
+            _LOG_V("\nWiFi Connected, IP Address:%s.\n", WiFi.localIP().toString().c_str());
+            WIFImode = 1;
+            write_settings();
+            //LCDNav = 0;
+        }
+
+//    CliState = 0;
+        WiFi.stopSmartConfig(); // this makes sure repeated SmartConfig calls are succesfull
+
+        StartwebServer();       //restart webserver
     }
 
     if (WIFImode == 1 && WiFi.getMode() == WIFI_OFF) {
@@ -719,6 +743,10 @@ void P1Task(void * parameter) {
     // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
     if (dataready > datamemory) datamemory = dataready;
 
+/*    if (!(datamemory & 0x80 ) && !(datamemory & 0x03))                        // if both P1 and CT are not connected,
+                                                                                // we go to wifimode 2 smartconfig
+        WIFImode = 2;
+*/
     // Every ~2 seconds send measurement data over websockets to browser(s)
     if (socketupdate == 20 && ws.count() && WiFi.status() == WL_CONNECTED) {
 
@@ -1117,6 +1145,7 @@ void loop() {
  // Serial.printf("Status: %04x Time: %02u:%02u Date: %02u/%02u/%02u Day:%u ", 
  // WIFImode + (LocalTimeSet << 8), timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year%100, timeinfo.tm_wday);
  // Serial.printf("IP: %u.%u.%u.%u MAC: %08x PW:%s\n", localIp[0], localIp[1], localIp[2], localIp[3] , MacId(), APpassword);  
-
+  Serial.printf("DINGO: WIFImode=%i.\n", WIFImode);
+  _LOG_A("Connected to AP: %s Local IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
