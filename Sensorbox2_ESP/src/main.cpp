@@ -355,6 +355,93 @@ void WiFiSetup(void) {
 }
 
 
+bool isValidInput(String input) {
+  // Check if the input contains only alphanumeric characters, underscores, and hyphens
+  for (char c : input) {
+    if (!isalnum(c) && c != '_' && c != '-') {
+      return false;
+    }
+  }
+  return true;
+}
+
+
+static uint8_t CliState = 0;
+void ProvisionCli() {
+
+    static char CliBuffer[64];
+    static uint8_t idx = 0;
+    static bool entered = false;
+    char ch;
+
+    if (CliState == 0) {
+        Serial.println("Enter WiFi access point name:");
+        CliState++;
+
+    } else if (CliState == 1 && entered) {
+        Router_SSID = String(CliBuffer);
+        Router_SSID.trim();
+        if (!isValidInput(Router_SSID)) {
+            Serial.println("Invalid characters in SSID.");
+            Router_SSID = "";
+            CliState = 0;
+        } else CliState++;              // All OK, now request password.
+        idx = 0;
+        entered = false;
+
+    } else if (CliState == 2) {
+        Serial.println("Enter WiFi password:");
+        CliState++;
+
+    } else if (CliState == 3 && entered) {
+        Router_Pass = String(CliBuffer);
+        Router_Pass.trim();
+        if (idx < 8) {
+            Serial.println("Password should be min 8 characters.");
+            Router_Pass = "";
+            CliState = 2;
+        } else CliState++;             // All OK
+        idx = 0;
+        entered = false;
+
+    } else if (CliState == 4) {
+        Serial.println("WiFi credentials stored.");
+        CliState++;
+
+    } else if (CliState == 5) {
+
+        //WiFi.stopSmartConfig();             // Stop SmartConfig //TODO necessary?
+        WiFi.mode(WIFI_STA);                // Set Station Mode
+        WiFi.begin(Router_SSID, Router_Pass);   // Configure Wifi with credentials
+        CliState++;
+    }
+
+
+    // read input, and store in buffer until we read a \n
+    while (Serial.available()) {
+        ch = Serial.read();
+
+        // When entering a password, replace last character with a *
+        if (CliState == 3 && idx) Serial.printf("\b*");
+        Serial.print(ch);
+
+        // check for CR/LF, and make sure the contents of the buffer is atleast 1 character
+        if (ch == '\n' || ch == '\r') {
+            if (idx) {
+                CliBuffer[idx] = 0;         // null terminate
+                entered = true;
+            } else if (CliState == 1 || CliState == 3) CliState--; // Reprint the last message
+        } else if (idx < 63) {              // Store in buffer
+            if (ch == '\b' && idx) {
+                idx--;
+                Serial.print(" \b");        // erase character from terminal
+            } else {
+                CliBuffer[idx++] = ch;
+            }
+        }
+    }
+}
+
 
 void SetupNetworkTask(void * parameter) {
 
@@ -379,10 +466,14 @@ void SetupNetworkTask(void * parameter) {
 
         //Wait for SmartConfig packet from mobile.
         _LOG_V("Waiting for SmartConfig.\n");
+        Serial.end();
+        Serial.begin(115200);
+        //Serial.begin(115200, SERIAL_8N1, PIN_RXD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
+
         while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED)) {
         // Also start Serial CLI for entering AP and password.
-//            ProvisionCli();
-            delay(100);
+            ProvisionCli();
+            delay(10);
         }                       // loop until connected or Wifi setup menu is exited.
 
         delay(2000);            // give smartConfig time to send provision status back to the users phone.
@@ -394,7 +485,9 @@ void SetupNetworkTask(void * parameter) {
             //LCDNav = 0;
         }
 
-//    CliState = 0;
+        CliState = 0;
+        Serial.end();
+        Serial.begin(115200, SERIAL_8N1, PIN_PGD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
         WiFi.stopSmartConfig(); // this makes sure repeated SmartConfig calls are succesfull
 
         StartwebServer();       //restart webserver
