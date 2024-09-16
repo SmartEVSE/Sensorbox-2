@@ -53,11 +53,13 @@
 
 #include <SPIFFS.h>
 
+#include "network.h"
 #include <WiFi.h>
-#include <AsyncTCP.h>
+//#include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <ESPmDNS.h>
+//#include <ESPmDNS.h>
 #include <Update.h>
+
 #include <esp_task_wdt.h>
 
 #include "Logging.h"
@@ -181,7 +183,7 @@ void read_settings(bool write) {
 // 
 // ---------------------------------------------------------------------------------------------------------------
 
-
+/*
 void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
     Serial.print("WiFi lost connection.\n");
     // try to reconnect when not connected to AP
@@ -197,7 +199,7 @@ void WiFiStationGotIp(WiFiEvent_t event, WiFiEventInfo_t info) {
     Serial.print("\nLocal IP: "); Serial.print(localIp);
     Serial.print("\n");
 }
-
+*/
 
 
 void onWsEvent(AsyncWebSocket * webServer, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
