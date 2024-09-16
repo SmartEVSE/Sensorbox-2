@@ -1108,5 +1108,10 @@ void loop() {
  // Serial.printf("IP: %u.%u.%u.%u MAC: %08x PW:%s\n", localIp[0], localIp[1], localIp[2], localIp[3] , MacId(), APpassword);  
   Serial.printf("DINGO: WIFImode=%i.\n", WIFImode);
   _LOG_A("Connected to AP: %s Local IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+#ifndef DEBUG_DISABLED
+    // Remote debug over WiFi
+    Debug.handle();
+#endif
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
 }

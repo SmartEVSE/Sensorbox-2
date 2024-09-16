@@ -2660,10 +2660,4 @@ void loop2() {
         ocppLoop();
     }
 #endif //ENABLE_OCPP
-
-#ifndef DEBUG_DISABLED
-    // Remote debug over WiFi
-    Debug.handle();
-#endif
-
 }
