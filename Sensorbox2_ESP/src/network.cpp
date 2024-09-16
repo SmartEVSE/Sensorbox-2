@@ -2209,8 +2209,7 @@ void handleWIFImode() {
 void WiFiSetup(void) {
     mg_mgr_init(&mgr);  // Initialise event manager
 
-    WiFi.setAutoReconnect(false);                                                //actually does nothing since this is the default value
-    //WiFi.setAutoReconnect(true);                                                //actually does nothing since this is the default value
+    WiFi.setAutoReconnect(true);                                                //actually does nothing since this is the default value
     //WiFi.persistent(true);
     WiFi.onEvent(onWifiEvent);
 //WIFImode = 2; //TODO for testing only
