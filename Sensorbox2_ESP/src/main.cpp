@@ -311,21 +311,6 @@ void StartwebServer(void) {
 void WiFiSetup(void) {
 
 
-    // Start the mDNS responder so that the SmartEVSE can be accessed using a local hostame: http://SmartEVSE-xxxxxx.local
-    if (!MDNS.begin(APhostname.c_str())) {                
-        Serial.print("Error setting up MDNS responder!\n");
-    } else {
-        Serial.print("mDNS responder started. http://");
-        Serial.print(APhostname);
-        Serial.print(".local\n");
-    }
-        
-    // On disconnect Event, call function
-    WiFi.onEvent(WiFiStationDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);    
-    // On IP, call function
-    WiFi.onEvent(WiFiStationGotIp, ARDUINO_EVENT_WIFI_STA_GOT_IP);  // arduino 2.x
-    //WiFi.onEvent (WiFiAPstop, SYSTEM_EVENT_AP_STOP);
-    
 
     // Init and get the time
     // See https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv for timezone codes for your region
