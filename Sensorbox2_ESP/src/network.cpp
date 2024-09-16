@@ -2230,6 +2230,8 @@ void WiFiSetup(void) {
     for (uint8_t i=0; i<8 ;i++) {
         SmartConfigKey[i+8] = random(9) + '1';
     }
+#else
+    StartwebServer();
 #endif
 }
 
