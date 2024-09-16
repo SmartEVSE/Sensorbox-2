@@ -738,7 +738,11 @@ void P1Task(void * parameter) {
 
     //if (!(datamemory & 0x80 ) && !(datamemory & 0x03)) TODO                       // if both P1 and CT are not connected,
     if (!(datamemory & 0x80 ) && !(datamemory & 0x03) && WiFi.status() != WL_CONNECTED)                        // if both P1 and CT are not connected,
-                                                                                // we go to wifimode 2 smartconfig
+    if (!(datamemory & 0x80 ) && !(datamemory & 0x03) && WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5)
+        // if both P1 and CT are not connected,
+        // and we have no wifi
+        // we go to wifimode 2 smartconfig
+        // but we wait 5 seconds to give the existing wifi time to connect
         WIFImode = 2;
 
     // Every ~2 seconds send measurement data over websockets to browser(s)
@@ -1124,6 +1128,7 @@ void setup() {
 
   } else Serial.print("No KeyStorage found in nvs!\n");
 
+  WiFiSetup();
 
 }
 

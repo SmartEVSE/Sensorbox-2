@@ -67,13 +67,16 @@ mg_connection *HttpListener80, *HttpListener443;
 bool shouldReboot = false;
 
 extern void write_settings(void);
+extern void StopwebServer(void); //TODO or move over to network.cpp?
+extern void StartwebServer(void); //TODO or move over to network.cpp?
+
 extern uint32_t serialnr;
 // Global data
 
 
 // The following data will be updated by eeprom/storage data at powerup:
 uint8_t WIFImode = WIFI_MODE;                                               // WiFi Mode (0:Disabled / 1:Enabled / 2:Start Portal)
-char SmartConfigKey[] = "0000000000000000";                                 // SmartConfig / EspTouch AES key, used to encyrypt the WiFi password.
+char SmartConfigKey[] = "0123456789abcdef";                                 // SmartConfig / EspTouch AES key, used to encyrypt the WiFi password.
 String TZinfo = "";                                                         // contains POSIX time string
 
 char *downloadUrl = NULL;
@@ -2016,7 +2019,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
   }
 }
 */
-void onWifiEvent(WiFiEvent_t event) {
+void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     switch (event) {
         case WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP:
 #if LOG_LEVEL >= 1
@@ -2076,6 +2079,37 @@ void onWifiEvent(WiFiEvent_t event) {
                 WiFi.reconnect();                                               // recommended reconnection strategy by ESP-IDF manual
             }
             break;
+        // for some reason this is not necessary in the SmartEVSEv3 code, but it is for Sensorbox v2:
+        case ARDUINO_EVENT_SC_GOT_SSID_PSWD:
+        {
+            Serial.println("Got SSID and password");
+
+            uint8_t ssid[33] = { 0 };
+            uint8_t password[65] = { 0 };
+
+            uint8_t rvd_data[33] = { 0 };
+
+            memcpy(ssid, info.sc_got_ssid_pswd.ssid, sizeof(info.sc_got_ssid_pswd.ssid));
+            memcpy(password, info.sc_got_ssid_pswd.password, sizeof(info.sc_got_ssid_pswd.password));
+
+/*          Serial.printf("SSID:%s\n", ssid);
+            Serial.printf("PASSWORD:%s\n", password);
+
+            if (info.sc_got_ssid_pswd.type == SC_TYPE_ESPTOUCH_V2) {
+                ESP_ERROR_CHECK( esp_smartconfig_get_rvd_data(rvd_data, sizeof(rvd_data)) );
+
+                Serial.println("RVD_DATA");
+                Serial.write(rvd_data, 33);
+                Serial.printf("\n");
+
+                for (int i = 0; i < 33; i++) {
+                    Serial.printf("%02x ", rvd_data[i]);
+                }
+                Serial.printf("\n");
+            }*/
+            WiFi.begin((char*)ssid, (char *)password);
+        }
+        break;
         default: break;
   }
 }
@@ -2093,6 +2127,9 @@ void SetupPortalTask(void * parameter) {
     _LOG_A("Start Portal...\n");
     WiFi.disconnect(true);
 
+#if SENSORBOX_VERSION == 20
+    StopwebServer();
+#else
     // Close Mongoose HTTP Server
     if (HttpListener80) {
         HttpListener80->is_closing = 1;
@@ -2105,6 +2142,10 @@ void SetupPortalTask(void * parameter) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         _LOG_A("Waiting for Mongoose Server to terminate\n");
     }
+#endif
+/*    WiFi.mode(WIFI_STA);
+    WiFi.begin("iot_nomap", "goodbye:saidEASTERBUNNY");
+    delay(1000);*/
 
     //Init WiFi as Station, start SmartConfig
     WiFi.mode(WIFI_AP_STA);
@@ -2114,10 +2155,11 @@ void SetupPortalTask(void * parameter) {
     _LOG_V("Waiting for SmartConfig.\n");
     while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED)) {
         // Also start Serial CLI for entering AP and password.
+#if SENSORBOX_VERSION != 20                                                     // ProvisionCli does not work on Sensorbox
         ProvisionCli();
+#endif
         delay(100);
     }                       // loop until connected or Wifi setup menu is exited.
-    
     delay(2000);            // give smartConfig time to send provision status back to the users phone.
         
     if (WiFi.status() == WL_CONNECTED) {
@@ -2131,7 +2173,9 @@ void SetupPortalTask(void * parameter) {
 
     CliState = 0;
     WiFi.stopSmartConfig(); // this makes sure repeated SmartConfig calls are succesfull
-
+#if SENSORBOX_VERSION == 20
+    StartwebServer();
+#endif
     vTaskDelete(NULL);                                                          //end this task so it will not take up resources
 }
 
@@ -2165,9 +2209,11 @@ void handleWIFImode() {
 void WiFiSetup(void) {
     mg_mgr_init(&mgr);  // Initialise event manager
 
-    WiFi.setAutoReconnect(true);                                                //actually does nothing since this is the default value
+    WiFi.setAutoReconnect(false);                                                //actually does nothing since this is the default value
+    //WiFi.setAutoReconnect(true);                                                //actually does nothing since this is the default value
     //WiFi.persistent(true);
     WiFi.onEvent(onWifiEvent);
+//WIFImode = 2; //TODO for testing only
     handleWIFImode();                                                           //go into the mode that was saved in nonvolatile memory
 
     // Init and get the time
@@ -2180,9 +2226,11 @@ void WiFiSetup(void) {
 
     // Set random AES Key for SmartConfig provisioning, first 8 positions are 0
     // This key is displayed on the LCD, and should be entered when using the EspTouch app.
+#if SENSORBOX_VERSION != 20
     for (uint8_t i=0; i<8 ;i++) {
         SmartConfigKey[i+8] = random(9) + '1';
     }
+#endif
 }
 
 
