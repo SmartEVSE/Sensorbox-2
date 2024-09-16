@@ -84,16 +84,17 @@ const char* TZ_INFO    = "CET-1CEST-2,M3.5.0/2,M10.5.0/3";      // Europe/Amster
 //const char* TZ_INFO    = "GMT+0BST-1,M3.5.0/1,M10.5.0/2";     // Europe/London
 //const char* TZ_INFO    = "PST8PDT,M3.2.0,M11.1.0";            // USA, Los Angeles
 
-struct tm timeinfo;
+extern struct tm timeinfo;
 
 AsyncWebServer webServer(80);
 AsyncWebSocket ws("/ws");           // data to/from webpage
 IPAddress localIp;
-String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
+//String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
+extern String APhostname;
 
 // SSID and PW for your Router
-String Router_SSID;
-String Router_Pass;
+//String Router_SSID;
+//String Router_Pass;
 
 // Create a ModbusRTU server and client instance on Serial1 
 ModbusServerRTU MBserver(Serial1, 2000, ToggleRS485);                        // TCP timeout set to 2000 ms
@@ -110,7 +111,7 @@ uint8_t P1data[2000];
 uint16_t ModbusData[50];    // 50 registers
 
 // data that will be stored in 'preferences'
-uint8_t WIFImode = WIFI_MODE;                                               // WiFi Mode (0:Disabled / 1:Enabled / 2:Start Portal)
+extern uint8_t WIFImode;
 String APpassword = "00000000";
 // end of data that will be stored in 'preferences'
 
@@ -121,7 +122,7 @@ float Irms[3], Volts[3], IrmsCT[3];                                           //
 uint8_t datamemory = 0;
 unsigned char led = 0, Wire = WIRES4 + CW;
 uint16_t blinkram = 0, P1taskram = 0;
-bool LocalTimeSet = false;
+extern bool LocalTimeSet;
 
 // ------------------------------------------------ Settings -----------------------------------------------------
 // 
@@ -323,7 +324,7 @@ void StartwebServer(void) {
 
 }
 
-
+/*
 // Setup Wifi 
 void WiFiSetup(void) {
 
@@ -353,96 +354,8 @@ void WiFiSetup(void) {
     // timeval epoch = {1635641990, 0};                    
     // settimeofday((const timeval*)&epoch, 0);            
 }
-
-
-bool isValidInput(String input) {
-  // Check if the input contains only alphanumeric characters, underscores, and hyphens
-  for (char c : input) {
-    if (!isalnum(c) && c != '_' && c != '-') {
-      return false;
-    }
-  }
-  return true;
-}
-
-
-static uint8_t CliState = 0;
-void ProvisionCli() {
-
-    static char CliBuffer[64];
-    static uint8_t idx = 0;
-    static bool entered = false;
-    char ch;
-
-    if (CliState == 0) {
-        Serial.println("Enter WiFi access point name:");
-        CliState++;
-
-    } else if (CliState == 1 && entered) {
-        Router_SSID = String(CliBuffer);
-        Router_SSID.trim();
-        if (!isValidInput(Router_SSID)) {
-            Serial.println("Invalid characters in SSID.");
-            Router_SSID = "";
-            CliState = 0;
-        } else CliState++;              // All OK, now request password.
-        idx = 0;
-        entered = false;
-
-    } else if (CliState == 2) {
-        Serial.println("Enter WiFi password:");
-        CliState++;
-
-    } else if (CliState == 3 && entered) {
-        Router_Pass = String(CliBuffer);
-        Router_Pass.trim();
-        if (idx < 8) {
-            Serial.println("Password should be min 8 characters.");
-            Router_Pass = "";
-            CliState = 2;
-        } else CliState++;             // All OK
-        idx = 0;
-        entered = false;
-
-    } else if (CliState == 4) {
-        Serial.println("WiFi credentials stored.");
-        CliState++;
-
-    } else if (CliState == 5) {
-
-        //WiFi.stopSmartConfig();             // Stop SmartConfig //TODO necessary?
-        WiFi.mode(WIFI_STA);                // Set Station Mode
-        WiFi.begin(Router_SSID, Router_Pass);   // Configure Wifi with credentials
-        CliState++;
-    }
-
-
-    // read input, and store in buffer until we read a \n
-    while (Serial.available()) {
-        ch = Serial.read();
-
-        // When entering a password, replace last character with a *
-        if (CliState == 3 && idx) Serial.printf("\b*");
-        Serial.print(ch);
-
-        // check for CR/LF, and make sure the contents of the buffer is atleast 1 character
-        if (ch == '\n' || ch == '\r') {
-            if (idx) {
-                CliBuffer[idx] = 0;         // null terminate
-                entered = true;
-            } else if (CliState == 1 || CliState == 3) CliState--; // Reprint the last message
-        } else if (idx < 63) {              // Store in buffer
-            if (ch == '\b' && idx) {
-                idx--;
-                Serial.print(" \b");        // erase character from terminal
-            } else {
-                CliBuffer[idx++] = ch;
-            }
-        }
-    }
-}
-
-
+*/
+/*
 void SetupNetworkTask(void * parameter) {
 
   WiFiSetup();
@@ -508,7 +421,7 @@ void SetupNetworkTask(void * parameter) {
   } // while(1)
 
 }
-
+*/
 
 // ------------------------------------------------ Webserver End ------------------------------------------------
 // 
@@ -1178,7 +1091,7 @@ void setup() {
     1,                    // Task priority
     NULL                  // Task handle
   );
-
+/*
   // Create Task that setups the network, and the webserver 
   xTaskCreate(
     SetupNetworkTask,     // Function that should be called
@@ -1188,7 +1101,7 @@ void setup() {
     1,                    // Task priority
     NULL                  // Task handle
   );
-
+*/
 
   Serial.print("Configuring WDT...\n");
   esp_task_wdt_init(WDT_TIMEOUT, true);     // Setup watchdog

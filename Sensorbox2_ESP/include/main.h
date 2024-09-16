@@ -35,6 +35,8 @@
 // Toggle pins of the RS485 transceiver.
 void ToggleRS485(bool level);
 
+#define FREE(x) free(x); x = NULL;
+
 #if DBG == 0
 //used to steer RemoteDebug
 #define DEBUG_DISABLED 1
