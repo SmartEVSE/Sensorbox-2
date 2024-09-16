@@ -316,9 +316,6 @@ void WiFiSetup(void) {
     // See https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv for timezone codes for your region
     configTzTime(TZ_INFO, NTP_SERVER);
     
-    // test code, sets time to 31-OCT, 02:59:50 , 10 seconds before DST will be switched off
-    // timeval epoch = {1635641990, 0};                    
-    // settimeofday((const timeval*)&epoch, 0);            
 }
 */
 /*

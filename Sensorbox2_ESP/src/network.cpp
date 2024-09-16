@@ -58,10 +58,6 @@ mg_timer *MQTTtimer;
 uint8_t lastMqttUpdate = 0;
 #endif
 
-// SSID and PW for your Router
-String Router_SSID;
-String Router_Pass;
-
 mg_connection *HttpListener80, *HttpListener443;
 
 bool shouldReboot = false;
@@ -168,6 +164,8 @@ bool isValidInput(String input) {
 static uint8_t CliState = 0;
 void ProvisionCli() {
 
+    // SSID and PW for your Router
+    String Router_SSID, Router_Pass;
     static char CliBuffer[64];
     static uint8_t idx = 0;
     static bool entered = false;
@@ -2086,27 +2084,8 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 
             uint8_t ssid[33] = { 0 };
             uint8_t password[65] = { 0 };
-
-            uint8_t rvd_data[33] = { 0 };
-
             memcpy(ssid, info.sc_got_ssid_pswd.ssid, sizeof(info.sc_got_ssid_pswd.ssid));
             memcpy(password, info.sc_got_ssid_pswd.password, sizeof(info.sc_got_ssid_pswd.password));
-
-/*          Serial.printf("SSID:%s\n", ssid);
-            Serial.printf("PASSWORD:%s\n", password);
-
-            if (info.sc_got_ssid_pswd.type == SC_TYPE_ESPTOUCH_V2) {
-                ESP_ERROR_CHECK( esp_smartconfig_get_rvd_data(rvd_data, sizeof(rvd_data)) );
-
-                Serial.println("RVD_DATA");
-                Serial.write(rvd_data, 33);
-                Serial.printf("\n");
-
-                for (int i = 0; i < 33; i++) {
-                    Serial.printf("%02x ", rvd_data[i]);
-                }
-                Serial.printf("\n");
-            }*/
             WiFi.begin((char*)ssid, (char *)password);
         }
         break;
@@ -2207,6 +2186,10 @@ void handleWIFImode() {
 
 // Setup Wifi 
 void WiFiSetup(void) {
+    // overwrite APhostname if serialnr is programmed
+//    APhostname = "SmartEVSE-" + String( serialnr & 0xffff, 10);                 // SmartEVSE access point Name = SmartEVSE-xxxxx
+    WiFi.setHostname(APhostname.c_str());
+
     mg_mgr_init(&mgr);  // Initialise event manager
 
     WiFi.setAutoReconnect(true);                                                //actually does nothing since this is the default value
@@ -2232,6 +2215,8 @@ void WiFiSetup(void) {
 #else
     StartwebServer();
 #endif
+    firmwareUpdateTimer = random(FW_UPDATE_DELAY, 0xffff);
+    //firmwareUpdateTimer = random(FW_UPDATE_DELAY, 120); // DINGO TODO debug max 2 minutes
 }
 
 
@@ -2592,20 +2577,6 @@ void ocppLoop() {
 #endif //ENABLE_OCPP
 
 
-void setup2() {
-
-    // overwrite APhostname if serialnr is programmed
-    APhostname = "SmartEVSE-" + String( serialnr & 0xffff, 10);                 // SmartEVSE access point Name = SmartEVSE-xxxxx
-    WiFi.setHostname(APhostname.c_str());
-
-    // Setup WiFi, webserver and firmware OTA
-    // Please be aware that after doing a OTA update, its possible that the active partition is set to OTA1.
-    // Uploading a new firmware through USB will however update OTA0, and you will not notice any changes...
-    WiFiSetup();
-
-    firmwareUpdateTimer = random(FW_UPDATE_DELAY, 0xffff);
-    //firmwareUpdateTimer = random(FW_UPDATE_DELAY, 120); // DINGO TODO debug max 2 minutes
-}
 /*
 // returns true if current and latest version can be detected correctly and if the latest version is newer then current
 // this means that ANY home compiled version, which has version format "11:20:03@Jun 17 2024", will NEVER be automatically updated!!
