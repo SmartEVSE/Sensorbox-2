@@ -73,20 +73,8 @@
 #include "prg_pic.h"
 #include <SPI.h>
 
-const char* NTP_SERVER = "europe.pool.ntp.org";
-// Specification of the Time Zone string:
-// http://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
-// list of time zones: https://remotemonitoringsystems.ca/time-zone-abbreviations.php
-// more: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
-//
-const char* TZ_INFO    = "CET-1CEST-2,M3.5.0/2,M10.5.0/3";      // Europe/Amsterdam
-//const char* TZ_INFO    = "GMT+0IST-1,M3.5.0/1,M10.5.0/2";     // Europe/Dublin
-//const char* TZ_INFO    = "EET-2EEST-3,M3.5.0/3,M10.5.0/4";    // Europe/Helsinki
-//const char* TZ_INFO    = "WET-0WEST-1,M3.5.0/1,M10.5.0/2";    // Europe/Lisbon
-//const char* TZ_INFO    = "GMT+0BST-1,M3.5.0/1,M10.5.0/2";     // Europe/London
-//const char* TZ_INFO    = "PST8PDT,M3.2.0,M11.1.0";            // USA, Los Angeles
-
 extern struct tm timeinfo;
+extern String TZinfo;
 
 AsyncWebServer webServer(80);
 AsyncWebSocket ws("/ws");           // data to/from webpage
@@ -164,6 +152,11 @@ void read_settings(bool write) {
   if (preferences.begin("settings", false) == true) {
     WIFImode = preferences.getUChar("WIFImode", WIFI_MODE);
     APpassword = preferences.getString("APpassword", AP_PASSWORD);
+    TZinfo = preferences.getString("TimezoneInfo","");
+    if (TZinfo != "") {
+        setenv("TZ",TZinfo.c_str(),1);
+        tzset();
+    }
     preferences.end();       
 
     // Check if AP password is unitialized. 

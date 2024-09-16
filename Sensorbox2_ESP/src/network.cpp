@@ -8,18 +8,8 @@
 #include <HTTPClient.h>
 #include <ESPmDNS.h>
 #include <Update.h>
-
-//#include <Logging.h>
-//#include <ModbusServerRTU.h>        // Slave/node
-//#include <ModbusClientRTU.h>        // Master
-//#include <time.h>
-
-//#include "evse.h"
-//#include "glcd.h"
-//#include "utils.h"
-//#include "OneWire.h"
-//#include "modbus.h"
-//#include "meter.h"
+#include <ArduinoJson.h>
+#include <Preferences.h>
 
 #ifndef DEBUG_DISABLED
 RemoteDebug Debug;
@@ -67,7 +57,7 @@ extern void StopwebServer(void); //TODO or move over to network.cpp?
 extern void StartwebServer(void); //TODO or move over to network.cpp?
 
 extern uint32_t serialnr;
-// Global data
+extern Preferences preferences;
 
 
 // The following data will be updated by eeprom/storage data at powerup:
@@ -951,7 +941,7 @@ int StoreTimeString(String DelayedTimeStr, DelayedTimeStruct *DelayedTime) {
     //DelayedTime.diff = 0;
     return 1;
 }
-
+*/
 
 void setTimeZone(void) {
     HTTPClient httpClient;
@@ -1020,7 +1010,7 @@ void setTimeZone(void) {
     httpClient.end();
     FREE(URL);
 }
-*/
+
 /*
 // wrapper so hasParam and getParam still work
 class webServerRequest {
@@ -2029,9 +2019,9 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             static char dns4url[]="udp://123.123.123.123:53";
             sprintf(dns4url, "udp://%s:53", WiFi.dnsIP().toString().c_str());
             mgr.dns4.url = dns4url;
-/*            if (TZinfo == "") {
+            if (TZinfo == "") {
                 setTimeZone();
-            }*/
+            }
 
             // Start the mDNS responder so that the SmartEVSE can be accessed using a local hostame: http://SmartEVSE-xxxxxx.local
             if (!MDNS.begin(APhostname.c_str())) {
