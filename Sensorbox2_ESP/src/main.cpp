@@ -90,7 +90,6 @@ extern struct tm timeinfo;
 
 AsyncWebServer webServer(80);
 AsyncWebSocket ws("/ws");           // data to/from webpage
-IPAddress localIp;
 //String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
 extern String APhostname;
 
@@ -182,25 +181,6 @@ void read_settings(bool write) {
 // ------------------------------------------------ Webserver ----------------------------------------------------
 // 
 // ---------------------------------------------------------------------------------------------------------------
-
-/*
-void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.print("WiFi lost connection.\n");
-    // try to reconnect when not connected to AP
-    if (WIFImode == 1) {
-        WiFi.reconnect();                                               // recommended reconnection strategy by ESP-IDF manual
-    }
-
-}
-
-void WiFiStationGotIp(WiFiEvent_t event, WiFiEventInfo_t info) {
-    localIp = WiFi.localIP();
-    Serial.print("Connected to AP: "); Serial.print(WiFi.SSID());
-    Serial.print("\nLocal IP: "); Serial.print(localIp);
-    Serial.print("\n");
-}
-*/
-
 
 void onWsEvent(AsyncWebSocket * webServer, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
   if (type == WS_EVT_CONNECT) {
@@ -330,7 +310,6 @@ void StartwebServer(void) {
 // Setup Wifi 
 void WiFiSetup(void) {
 
-    localIp = WiFi.localIP();
 
     // Start the mDNS responder so that the SmartEVSE can be accessed using a local hostame: http://SmartEVSE-xxxxxx.local
     if (!MDNS.begin(APhostname.c_str())) {                
@@ -912,6 +891,7 @@ ModbusMessage MBReadFC04(ModbusMessage request) {
   ModbusData[n++] = (uint16_t) (timeinfo.tm_hour << 8) + timeinfo.tm_min;   // hours since midnight	0-23, minutes after the hour 0-59
   ModbusData[n++] = (uint16_t) (timeinfo.tm_mday << 8) + timeinfo.tm_mon;   // day of the month	1-31, months since January 0-11
   ModbusData[n++] = (uint16_t) (timeinfo.tm_year << 8) + timeinfo.tm_wday;  // years since 1900, days since Sunday 0-6
+  IPAddress localIp = WiFi.localIP();
   ModbusData[n++] = (uint16_t) (localIp[0] << 8) + localIp[1];
   ModbusData[n++] = (uint16_t) (localIp[2] << 8) + localIp[3];
   ModbusData[n++] = (uint16_t) (MacId() >> 16);
