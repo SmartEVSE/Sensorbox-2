@@ -1099,15 +1099,16 @@ void setup() {
 // This code will run forever
 //
 void loop() {
-  
-  // reset the WDT every second
-  esp_task_wdt_reset();
+    getLocalTime(&timeinfo, 1000U);
+    if (!LocalTimeSet && WIFImode == 1) {
+        _LOG_A("Time not synced with NTP yet.\n");
+    }
 
- // Serial.printf("Status: %04x Time: %02u:%02u Date: %02u/%02u/%02u Day:%u ", 
- // WIFImode + (LocalTimeSet << 8), timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year%100, timeinfo.tm_wday);
- // Serial.printf("IP: %u.%u.%u.%u MAC: %08x PW:%s\n", localIp[0], localIp[1], localIp[2], localIp[3] , MacId(), APpassword);  
-  Serial.printf("DINGO: WIFImode=%i.\n", WIFImode);
-  _LOG_A("Connected to AP: %s Local IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+    // reset the WDT every second
+    esp_task_wdt_reset();
+
+    _LOG_A("Status: %04x Time: %02u:%02u Date: %02u/%02u/%02u Day:%u ", WIFImode + (LocalTimeSet << 8), timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year%100, timeinfo.tm_wday);
+    _LOG_A("Connected to AP: %s Local IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
 
 #ifndef DEBUG_DISABLED
     // Remote debug over WiFi
