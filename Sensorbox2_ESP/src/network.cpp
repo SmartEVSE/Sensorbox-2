@@ -1011,7 +1011,7 @@ void setTimeZone(void) {
     FREE(URL);
 }
 
-/*
+
 // wrapper so hasParam and getParam still work
 class webServerRequest {
 private:
@@ -1048,7 +1048,7 @@ const String& webServerRequest::value() {
 //end of wrapper
 
 struct mg_str empty = mg_str_n("", 0UL);
-
+/*
 #if MQTT
 char s_mqtt_url[80];
 //TODO perhaps integrate multiple fn callback functions?
@@ -1109,7 +1109,7 @@ static void timer_fn(void *arg) {
     if (s_conn == NULL) s_conn = mg_mqtt_connect(mgr, s_mqtt_url, &opts, fn_mqtt, NULL);
 }
 #endif
-/*
+*/
 // Connection event handler function
 // indenting lower level two spaces to stay compatible with old StartWebServer
 // We use the same event handler function for HTTP and HTTPS connections
@@ -1144,7 +1144,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
           preferences.end();       
         }
         ESP.restart();
-    } else if (mg_http_match_uri(hm, "/autoupdate")) {
+/*    } else if (mg_http_match_uri(hm, "/autoupdate")) {
         char owner[40];
         char buf[8];
         int debug;
@@ -1889,7 +1889,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
         serializeJson(doc, json);
         mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
 
-    } else if (mg_http_match_uri(hm, "/reboot") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+*/    } else if (mg_http_match_uri(hm, "/reboot") && !memcmp("POST", hm->method.buf, hm->method.len)) {
         DynamicJsonDocument doc(20);
 
         ESP.restart();
@@ -1898,7 +1898,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
         String json;
         serializeJson(doc, json);
         mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
-
+/*
 #if MODEM
     } else if (mg_http_match_uri(hm, "/ev_state") && !memcmp("POST", hm->method.buf, hm->method.len)) {
         DynamicJsonDocument doc(200);
@@ -1998,7 +1998,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
         }
         mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", ""); //json request needs json response
 #endif
-    } else {                                                                    // if everything else fails, serve static page
+*/    } else {                                                                    // if everything else fails, serve static page
         struct mg_http_serve_opts opts = {.root_dir = "/data", .ssi_pattern = NULL, .extra_headers = NULL, .mime_types = NULL, .page404 = NULL, .fs = &mg_fs_packed };
         //opts.fs = NULL;
         mg_http_serve_dir(c, hm, &opts);
@@ -2006,7 +2006,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
     delete request;
   }
 }
-*/
+
 void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     switch (event) {
         case WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP:
@@ -2040,17 +2040,17 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
                MQTTtimer = mg_timer_add(&mgr, 3000, MG_TIMER_REPEAT | MG_TIMER_RUN_NOW, timer_fn, &mgr);
             }
 #endif
-/*            mg_log_set(MG_LL_NONE);
+            mg_log_set(MG_LL_NONE);
             //mg_log_set(MG_LL_VERBOSE);
 
-            if (!HttpListener80) {
-                HttpListener80 = mg_http_listen(&mgr, "http://0.0.0.0:80", fn_http_server, NULL);  // Setup listener
+            if (!HttpListener80) { //TODO
+                HttpListener80 = mg_http_listen(&mgr, "http://0.0.0.0:8080", fn_http_server, NULL);  // Setup listener
             }
             if (!HttpListener443) {
                 HttpListener443 = mg_http_listen(&mgr, "http://0.0.0.0:443", fn_http_server, (void *) 1);  // Setup listener
             }
             _LOG_A("HTTP server started\n");
-*/
+
 #if DBG == 1
             // if we start RemoteDebug with no wifi credentials installed we get in a bootloop
             // so we start it here
@@ -2650,4 +2650,25 @@ void loop2() {
         ocppLoop();
     }
 #endif //ENABLE_OCPP
+}
+
+
+// called by loop() in the main program
+void network_loop() {
+    static unsigned long lastCheck_net = 0;
+    if (millis() - lastCheck_net >= 1000) {
+        lastCheck_net = millis();
+        //this block is for non-time critical stuff that needs to run approx 1 / second
+        getLocalTime(&timeinfo, 1000U);
+        if (!LocalTimeSet && WIFImode == 1) {
+            _LOG_A("Time not synced with NTP yet.\n");
+        }
+    }
+
+    mg_mgr_poll(&mgr, 100);                                                     // TODO increase this parameter to up to 1000 to make loop() less greedy
+
+#ifndef DEBUG_DISABLED
+    // Remote debug over WiFi
+    Debug.handle();
+#endif
 }

@@ -80,6 +80,7 @@ AsyncWebServer webServer(80);
 AsyncWebSocket ws("/ws");           // data to/from webpage
 //String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
 extern String APhostname;
+extern void network_loop(void);
 
 // SSID and PW for your Router
 //String Router_SSID;
@@ -234,19 +235,6 @@ void StartwebServer(void) {
  
     webServer.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/html", "spiffs.bin updates the SPIFFS partition<br>firmware.bin updates the main firmware<br><form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>");
-    });
-
-    webServer.on("/erasesettings", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/plain", "Erasing settings, rebooting");
-        if ( preferences.begin("settings", false) ) {         // our own settings
-          preferences.clear();
-          preferences.end();
-        }
-        if (preferences.begin("nvs.net80211", false) ) {      // WiFi settings used by ESP
-          preferences.clear();
-          preferences.end();       
-        }
-        ESP.restart();
     });
 
     webServer.on("/update", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -1092,20 +1080,16 @@ void setup() {
 // This code will run forever
 //
 void loop() {
-    getLocalTime(&timeinfo, 1000U);
-    if (!LocalTimeSet && WIFImode == 1) {
-        _LOG_A("Time not synced with NTP yet.\n");
+    network_loop();
+    static unsigned long lastCheck = 0;
+    if (millis() - lastCheck >= 1000) {
+        lastCheck = millis();
+        //this block is for non-time critical stuff that needs to run approx 1 / second
+        // reset the WDT every second
+        esp_task_wdt_reset();
+
+        _LOG_A("Status: %04x Time: %02u:%02u Date: %02u/%02u/%02u Day:%u ", WIFImode + (LocalTimeSet << 8), timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year%100, timeinfo.tm_wday);
+        _LOG_A("Connected to AP: %s Local IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     }
-
-    // reset the WDT every second
-    esp_task_wdt_reset();
-
-    _LOG_A("Status: %04x Time: %02u:%02u Date: %02u/%02u/%02u Day:%u ", WIFImode + (LocalTimeSet << 8), timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year%100, timeinfo.tm_wday);
-    _LOG_A("Connected to AP: %s Local IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-
-#ifndef DEBUG_DISABLED
-    // Remote debug over WiFi
-    Debug.handle();
-#endif
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    //vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
