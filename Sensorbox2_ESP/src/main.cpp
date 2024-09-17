@@ -56,8 +56,6 @@
 #include "network.h"
 #include <WiFi.h>
 //#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-//#include <ESPmDNS.h>
 #include <Update.h>
 
 #include <esp_task_wdt.h>
@@ -76,8 +74,6 @@
 extern struct tm timeinfo;
 extern String TZinfo;
 
-AsyncWebServer webServer(80);
-AsyncWebSocket ws("/ws");           // data to/from webpage
 //String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
 extern String APhostname;
 extern void network_loop(void);
@@ -170,69 +166,9 @@ void read_settings(bool write) {
 }
 
 
-
-
-// ------------------------------------------------ Webserver ----------------------------------------------------
-// 
-// ---------------------------------------------------------------------------------------------------------------
-
-void onWsEvent(AsyncWebSocket * webServer, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
-  if (type == WS_EVT_CONNECT) {
-    Serial.printf("ws[%s][%u] connect\n", webServer->url(), client->id());
-//    client->printf("Hello Client %u :)", client->id());
-//    client->ping();
-    
-  } else if (type == WS_EVT_DISCONNECT) {
-    Serial.printf("ws[%s][%u] disconnect\n", webServer->url(), client->id());
-  } else if(type == WS_EVT_PONG){
-//   Serial.printf("ws[%s][%u] pong[%u]: %s\n", webServer->url(), client->id(), len, (len)?(char*)data:"");
-  } else if (type == WS_EVT_DATA){
-
-    Serial.println("Data received: ");
-    for (int i=0; i < len; i++) {
-      Serial.print((char) data[i]);
-    }
-    Serial.println();
-  }
-  Serial.printf("Free: %u blink: %u P1task: %u\n",ESP.getFreeHeap(), blinkram, P1taskram );
-}
-
-
-//
-// 404 (page not found) handler
-// 
-void onRequest(AsyncWebServerRequest *request){
-    //Handle Unknown Request
-    request->send(404);
-}
-
-
-void StopwebServer(void) {
-    ws.closeAll();
-    webServer.end();
-    Serial.print("HTTP server stopped\n");
-}
-
-
+/*
 void StartwebServer(void) {
 
-    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        Serial.print("page / (root) requested and sent\n");
-        request->send(SPIFFS, "/index.html", String(), false);
-    });
-    // handles compressed .js file from SPIFFS
-    webServer.on("/required.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-        AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/required.js", "text/javascript");
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-    // handles compressed .css file from SPIFFS
-    webServer.on("/required.css", HTTP_GET, [](AsyncWebServerRequest *request) {
-        AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/required.css", "text/css");
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
- 
     webServer.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/html", "spiffs.bin updates the SPIFFS partition<br>firmware.bin updates the main firmware<br><form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>");
     });
@@ -270,23 +206,8 @@ void StartwebServer(void) {
             }
         }
     });
-
-    // attach filesystem root at URL /
-    webServer.serveStatic("/", SPIFFS, "/");
-
-    // setup 404 handler 'onRequest'
-    webServer.onNotFound(onRequest);
-
-    // setup websockets handler 'onWsEvent'
-    ws.onEvent(onWsEvent);
-    webServer.addHandler(&ws);
-    
-    // Setup async webserver
-    webServer.begin();
-    Serial.print("HTTP server started\n");
-
 }
-
+*/
 /*
 // Setup Wifi 
 void WiFiSetup(void) {
@@ -688,21 +609,22 @@ void P1Task(void * parameter) {
         WIFImode = 2;
 
     // Every ~2 seconds send measurement data over websockets to browser(s)
-    if (socketupdate == 20 && ws.count() && WiFi.status() == WL_CONNECTED) {
+    if (socketupdate == 20 && WiFi.status() == WL_CONNECTED) {
+    //if (socketupdate == 20 && ws.count() && WiFi.status() == WL_CONNECTED) { TODO DINGO
 
       // Smart meter measurement?
       if (datamemory & 0x80 ) {
         snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f",Irms[0], Irms[1], Irms[2]);
-        ws.textAll(buffer);
+        ///ws.textAll(buffer);
         snprintf(buffer, sizeof(buffer), "V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
-        ws.textAll(buffer);
+        ///ws.textAll(buffer);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",Irms[0],Irms[1],Irms[2]);
         //ws.printfAll_P("V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
 
       // CT measurement  
       } else if (datamemory & 0x03) { 
         snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f", IrmsCT[0], IrmsCT[1], IrmsCT[2]);
-        ws.textAll(buffer);
+        ///ws.textAll(buffer);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",IrmsCT[0],IrmsCT[1],IrmsCT[2]);
       }
 

@@ -2043,8 +2043,8 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             mg_log_set(MG_LL_NONE);
             //mg_log_set(MG_LL_VERBOSE);
 
-            if (!HttpListener80) { //TODO
-                HttpListener80 = mg_http_listen(&mgr, "http://0.0.0.0:8080", fn_http_server, NULL);  // Setup listener
+            if (!HttpListener80) {
+                HttpListener80 = mg_http_listen(&mgr, "http://0.0.0.0:80", fn_http_server, NULL);  // Setup listener
             }
             if (!HttpListener443) {
                 HttpListener443 = mg_http_listen(&mgr, "http://0.0.0.0:443", fn_http_server, (void *) 1);  // Setup listener
@@ -2096,9 +2096,6 @@ void SetupPortalTask(void * parameter) {
     _LOG_A("Start Portal...\n");
     WiFi.disconnect(true);
 
-#if SENSORBOX_VERSION == 20
-    StopwebServer();
-#else
     // Close Mongoose HTTP Server
     if (HttpListener80) {
         HttpListener80->is_closing = 1;
@@ -2111,10 +2108,6 @@ void SetupPortalTask(void * parameter) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         _LOG_A("Waiting for Mongoose Server to terminate\n");
     }
-#endif
-/*    WiFi.mode(WIFI_STA);
-    WiFi.begin("iot_nomap", "goodbye:saidEASTERBUNNY");
-    delay(1000);*/
 
     //Init WiFi as Station, start SmartConfig
     WiFi.mode(WIFI_AP_STA);
@@ -2142,9 +2135,6 @@ void SetupPortalTask(void * parameter) {
 
     CliState = 0;
     WiFi.stopSmartConfig(); // this makes sure repeated SmartConfig calls are succesfull
-#if SENSORBOX_VERSION == 20
-    StartwebServer();
-#endif
     vTaskDelete(NULL);                                                          //end this task so it will not take up resources
 }
 
@@ -2202,8 +2192,6 @@ void WiFiSetup(void) {
     for (uint8_t i=0; i<8 ;i++) {
         SmartConfigKey[i+8] = random(9) + '1';
     }
-#else
-    StartwebServer();
 #endif
     firmwareUpdateTimer = random(FW_UPDATE_DELAY, 0xffff);
     //firmwareUpdateTimer = random(FW_UPDATE_DELAY, 120); // DINGO TODO debug max 2 minutes
