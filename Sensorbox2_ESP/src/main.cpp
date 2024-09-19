@@ -599,8 +599,6 @@ void P1Task(void * parameter) {
     // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
     if (dataready > datamemory) datamemory = dataready;
 
-    //if (!(datamemory & 0x80 ) && !(datamemory & 0x03)) TODO                       // if both P1 and CT are not connected,
-    if (!(datamemory & 0x80 ) && !(datamemory & 0x03) && WiFi.status() != WL_CONNECTED)                        // if both P1 and CT are not connected,
     if (!(datamemory & 0x80 ) && !(datamemory & 0x03) && WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5)
         // if both P1 and CT are not connected,
         // and we have no wifi
