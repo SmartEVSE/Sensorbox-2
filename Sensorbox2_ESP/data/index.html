@@ -1,156 +1,1183 @@
 <!DOCTYPE html>
 <html>
 <head>
+	<title>Smart EVSE V3</title>
+
+  <link rel="stylesheet" href="https://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css" />
+	<script src="https://code.jquery.com/jquery-1.11.1.min.js"></script>
+	<script src="https://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+
+  <!-- Required meta tags -->
   <meta charset="utf-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta http-equiv="Cache-control" content="no-cache">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="">
-  <meta name="author" content="">
-  <title>SmartEVSE-Sensorbox</title>
-  <script src="required.js" type="text/javascript"></script>
-  <link href="required.css" rel="stylesheet">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <style>
-  </style>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+
+  <link href="styling.css" rel="stylesheet">
 </head>
 
-<!-- Here starts the body of the page -->
-<!-- some html/javascript code from the simple-evse project-->
 <body>
 
-<!-- Control Container -->
-<div class="container" id="evseContent" style="display: block">
-  <div class="header clearfix">
-    <nav>
-      <ul class="nav pull-right" style="padding:10px">
-        <span class="text-muted" style="font-size:30px;cursor:pointer" onclick="openNav()">&#9776;</span>
-      </ul>
-      <h3 class="text-muted" align=center>SmartEVSE Sensorbox</h3>
-    </nav>
-  </div>
-  <div class id="StatusReady" align=center>
-    <img id="statusImg" src="grid-house.svg" width="50%">
-  </div>
-  <div>
-    <br>
-    <p id="evse_vehicle_state" class="text-center"></p>
-    <br>
-  </div>
-  <div class="panel panel-default table-responsive">
-    <table class="table table-hover">
-      <tbody style="transition:0.5s">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
 
-        <tr style="transition:0.3s">
-          <th><span class="glyphicon glyphicon-flash"></span>&nbsp;&nbsp;Power:</th>
-          <td id="TotalPower" class="text-right">0&nbsp;W</td>
-        </tr>  
-        <tr style="transition:0.3s">
-          <th><span class="glyphicon glyphicon-flash"></span>&nbsp;&nbsp;L1:</th>
-          <td id="IrmsL1" class="text-right">0.0&nbsp;A</td>
-        </tr>
-        <tr style="transition:0.3s">
-          <th><span class="glyphicon glyphicon-flash"></span>&nbsp;&nbsp;L2:</th>
-          <td id="IrmsL2" class="text-right">0.0&nbsp;A</td>
-        </tr>
-        <tr style="transition:0.3s">
-          <th><span class="glyphicon glyphicon-flash"></span>&nbsp;&nbsp;L3:</th>
-          <td id="IrmsL3" class="text-right">0.0&nbsp;A</td>
-        </tr>
-               
-      </tbody>
-    </table>
-  </div>
-    
-</div>
+  <script>
+      let endpoint = document.location + 'settings';
+      // let endpoint = 'http://10.0.0.36/settings';
+      let initiated=false;
+      let mqttEditMode = false;
+      let ocppEditMode = false;
+
+      $(document).ready(loadData());
 
 
-<script language="javascript" type="text/javascript">
+      function loadData(){
+        $.ajax({
+              url: endpoint
+          }).then(function(data) {
+            if(!initiated) {
+              initiated = true;
+              $('#version').append(data.version);
+              sessionStorage.setItem("version",JSON.stringify(data.version));
+              $('#serialnr').append(data.serialnr);
 
-  var Irms1 = 0.0 ,Irms2= 0.0, Irms3 = 0.0;
-  var Vrms1 = 230, Vrms2 = 230, Vrms3 = 230;
-  var Power;
+              let minCurrent=parseInt(data.settings.current_min.toFixed(1));
+              let maxCurrent=parseInt(data.settings.current_max.toFixed(1));
 
-  // This is called when the page finishes loading
-  function init() {
+              // Initialize at page load
+              // value 0 = no override
+              if(data.evse.loadbl < 2) {
+                $('#mode_override_current').append($('<option>', {
+                    value: 0,
+                    text: 'no override'
+                }));
+                for(let x = minCurrent ; x <= maxCurrent ; x++) {
+                  $('#mode_override_current').append($('<option>', {
+                      value: x,
+                      text: x + 'A'
+                  }));
+                }
+              }
+              $('#required_evccid').val(data.settings.required_evccid || "");
+            }
+            for(let x=0; x<=3; x++) {
+              if(x == data.mode_id) {
+                $('#mode_' + x).css("background-color", "#1CC88A");
+              } else {
+                $('#mode_' + x).css("background-color", "#EDEDED");
+              }
+            }
+            $('#mode_' + data.mode_id).css("background-color", "#1CC88A");
 
-    // Connect to WebSocket server
-      wsConnect('ws://'+document.location.host+'/ws');
-  }
+            $('#mode').text(data.mode);
+            $('#dutycycle').text((data.evse.pwm*100/1024).toFixed(0) + " %");
 
-  // Call this to connect to the WebSocket server
-  function wsConnect(url) {
+            if (data.ev_state) {
+              let full_soc = data.ev_state.full_soc;
+              let initial_soc = data.ev_state.initial_soc;
+              let computed_soc = data.ev_state.computed_soc;
+              let time_until_full = data.ev_state.time_until_full;
+              let energy_capacity = data.ev_state.energy_capacity;
+              let energy_request = data.ev_state.energy_request;
+              let evccid = data.ev_state.evccid;
 
-      // Connect to WebSocket server
-      websocket = new WebSocket(url);
-      // Assign callbacks
-      websocket.onopen = function(evt) { onOpen(evt) };
-      websocket.onclose = function(evt) { onClose(evt) };
-      websocket.onmessage = function(evt) { onMessage(evt) };
-      websocket.onerror = function(evt) { onError(evt) };
-  }
+              $('#computed_soc').html(computed_soc >= 0 ? computed_soc + " &#37;" : "N/A");
+              $('#full_soc').html(full_soc >= 0 ? full_soc + " &#37;" : "N/A");
+              $('#initial_soc').html(initial_soc >= 0 ? initial_soc + " &#37;" : "N/A");
+              $('#energy_capacity').html(energy_capacity >= 0 ? energy_capacity.toFixed(1) + " kWh" : "N/A");
+              $('#evccid').html(evccid || "N/A");
+              $('#full_at')
+                .text(time_until_full > 0 ? new Date(+Date.now()+(time_until_full * 1000)).toLocaleString(undefined, { timeStyle: 'short', dateStyle: "short" }) : 'N/A')
+                .attr('title', (time_until_full > 0 ? Math.round(time_until_full / 60) + ' min to go' : 'N/A'));
+            }
 
-  // Called when a WebSocket connection is established with the server
-  function onOpen(evt) {
+            if (data.mqtt) {
+              $('#mqtt').text((data.mqtt.status) || 'N/A').show();
+              $('#mqtt_config').show();
+            } else {
+              $('#mqtt').text('').hide();
+              $('.config').hide();
+              $('#mqtt_config').hide();
+            }
 
-      // Log connection state
-      console.log("Connected");
-  }
+            if(data.evse.loadbl > 1) {
+              $('[id=loadbl]').show();
+              $('[id=loadbl_text]').show();
+              $('[id=loadbl_node]').text("Slave Node "+(data.evse.loadbl-1));
+              //$('[id=loadbl_text_slave]').show();
+              //$('[id=loadbl_text_master]').hide();
+              $('[id=loadbl_mode_3_off]').show();
+              $('[id=contactor2]').hide();
+              //$('[id=form_mode] :input').prop('disabled',true);
+              $('[id=mode_2]').show();
+              $('[id=mode_3]').show();
+              //$('[id=mode_override_current]').prop('disabled',true);
+              $('[id=override_current_box]').hide();
+              $('[id=override_current_box2]').hide();
+              $('[id=form_pwm] :input').prop('disabled',true);
+            } else if (data.evse.loadbl == 1) {
+              $('[id=loadbl]').show();
+              $('[id=loadbl_text]').show();
+              $('[id=loadbl_node]').text("Master");
+              //$('[id=loadbl_text_slave]').hide();
+              //$('[id=loadbl_text_master]').show();
+              $('[id=loadbl_mode_3_off]').show();
+              $('[id=contactor2]').hide();
+              //$('[id=form_mode] :input').prop('disabled',false);
+              $('[id=mode_2]').show();
+              $('[id=mode_3]').show();
+              //$('[id=mode_override_current]').prop('disabled',false);
+              $('[id=form_pwm] :input').prop('disabled',false);
+            } else {
+              $('[id=loadbl]').hide();
+              $('[id=loadbl_text]').hide();
+              //$('[id=loadbl_text_slave]').hide();
+              //$('[id=loadbl_text_master]').hide();
+              $('[id=loadbl_mode_3_off]').show();
+              $('[id=contactor2]').show();
+              //$('[id=form_mode] :input').prop('disabled',false);
+              $('[id=mode_2]').show();
+              $('[id=mode_3]').show();
+              //$('[id=mode_override_current]').prop('disabled',false);
+              $('[id=form_pwm] :input').prop('disabled',false);
+            }
 
-  // Called when the WebSocket connection is closed
-  function onClose(evt) {
+            $('#car_connected').text(data.car_connected ? "Yes" : "No");
+            $('#state').text(data.evse.state);
+            $('#temp').text(data.evse.temp + " °C / " + data.evse.temp_max + " °C");
+            if(data.evse.error != "None") {
+              $('#error').text(data.evse.error);
+              $('[id=with_errors]').show();
+            } else {
+              $('[id=with_errors]').hide();
+            }
 
-      // Log disconnection state
-      console.log("Disconnected");
-      // Try to reconnect after a few seconds
-      setTimeout(function() { wsConnect('ws://'+document.location.host+'/ws') }, 2000);
-  }
+            if(data.evse.rfid != "Not Installed") {
+              $('#rfid').text(data.evse.rfid);
+            } else {
+              $('#show_rfid').hide();
+            }
 
-  // Called when a message is received from the server
-  function onMessage(evt) {
+            // if(data.evse.charge_timer > 0) {
+            //   $('#state').append(" (Starting in " + data.evse.charge_timer + "s)");
+            // }
+            if(data.evse.solar_stop_timer > 0) {
+              $('#state').append(" (Stopping in " + data.evse.solar_stop_timer + "s)");
+            }
 
-      // Print out our received message
-      console.log("Received: " + evt.data);
+            $('#current_min').text(data.settings.current_min.toFixed(1) + " A");
+            $('#current_max').text(data.settings.current_max.toFixed(1) + " A");
+            $('#override_current').text((data.settings.override_current/10).toFixed(1) + " A");
+            $('#enable_C2').text(data.settings.enable_C2);
+            if (data.settings.starttime) {
+                $('#starttime_date').text(new Date(data.settings.starttime * 1000).toLocaleDateString());
+                $('#starttime_time').text(new Date(data.settings.starttime * 1000).toLocaleTimeString());
+            } else {
+                $('#starttime_date').text("none");
+                $('#starttime_time').text("");
+            }
+            if (data.settings.stoptime) {
+                $('#stoptime_date').text(new Date(data.settings.stoptime * 1000).toLocaleDateString());
+                $('#stoptime_time').text(new Date(data.settings.stoptime * 1000).toLocaleTimeString());
+            } else {
+                $('#stoptime_date').text("none");
+                $('#stoptime_time').text("");
+            }
+            if (data.settings.repeat == 1) {
+                $('#repeat').text("Daily");
+            }
+            else {
+                $('#repeat').text("none");
+            }
+            $('#battery_current').text((data.home_battery.current/10).toFixed(1) + "A");
+            $('#battery_last_update_time').text(new Date(data.home_battery.last_update * 1000).toLocaleTimeString());
+            $('#battery_last_update_date').text(new Date(data.home_battery.last_update * 1000).toLocaleDateString());
 
-      if (evt.data[0] == "V") {
-        var Vrms = evt.data.split(":")[1];
-        Vrms1 = Vrms.split(",")[0];
-        Vrms2 = Vrms.split(",")[1];
-        Vrms3 = Vrms.split(",")[2];
+            $('#phase_total').text((data.phase_currents.TOTAL/10).toFixed(1) + " A");
+            $('#phase_1').text((data.phase_currents.L1/10).toFixed(1) + " A");
+            $('#phase_2').text((data.phase_currents.L2/10).toFixed(1) + " A");
+            $('#phase_3').text((data.phase_currents.L3/10).toFixed(1) + " A");
+            $('#evmeter_currents_total').text((data.ev_meter.currents.TOTAL/10).toFixed(1) + " A");
+            $('#evmeter_currents_1').text((data.ev_meter.currents.L1/10).toFixed(1) + " A");
+            $('#evmeter_currents_2').text((data.ev_meter.currents.L2/10).toFixed(1) + " A");
+            $('#evmeter_currents_3').text((data.ev_meter.currents.L3/10).toFixed(1) + " A");
+            $('#charge_current').text((data.settings.charge_current/10).toFixed(1) + " A");
+
+            $('#phase_original_total').text((data.phase_currents.original_data.TOTAL/10).toFixed(1) + " A");
+            $('#phase_original_1').text((data.phase_currents.original_data.L1/10).toFixed(1) + " A");
+            $('#phase_original_2').text((data.phase_currents.original_data.L2/10).toFixed(1) + " A");
+            $('#phase_original_3').text((data.phase_currents.original_data.L3/10).toFixed(1) + " A");
+
+            if(data.phase_currents.last_data_update > 0) {
+              $('#p1_data_time').text(new Date(data.phase_currents.last_data_update * 1000).toLocaleTimeString());
+              $('#p1_data_date').text(new Date(data.phase_currents.last_data_update * 1000).toLocaleDateString());
+              $('[id=with_p1_api_data_date]').show();
+              $('[id=with_p1_api_data_time]').show();
+            } else {
+              $('[id=with_p1_api_data_date]').hide();
+              $('[id=with_p1_api_data_time]').hide();
+            }
+
+            if(data.home_battery.last_update == 0) {
+              $('[id=with_homebattery]').hide();
+            } else {
+              $('[id=with_homebattery]').show();
+            }
+
+            if(data.home_battery.current == 0) {
+              $('#battery_status').text("Idle");
+            } else {
+              $('#battery_status').text(data.home_battery.current < 0 ? "Discharging" : "Charging");
+            }
+
+            if(data.settings.mains_meter == "Disabled") {
+              $('[id=with_mainsmeter]').hide();
+            } else {
+              $('[id=with_mainsmeter]').show();
+            }
+
+            if(data.ev_meter.description == "Disabled") {
+              $('[id=with_evmeter]').hide();
+            } else {
+              $('[id=with_evmeter]').show();
+              $('#evmeter_description').text(data.ev_meter.description);
+              $('#evmeter_power').text(data.ev_meter.import_active_power.toFixed(1) + " kW");
+              $('#evmeter_total_kwh').text(data.ev_meter.total_kwh.toFixed(1) + " kWh");
+              $('#evmeter_charged_kwh').text(data.ev_meter.charged_kwh.toFixed(1) + " kWh");
+            }
+
+            if(data.settings.modem == "Experiment") {
+              $('.with_modem').show();
+            } else {
+              $('.with_modem').hide();
+            }
+
+            if (data.mqtt && !mqttEditMode) {
+                $('#mqtt_host').val(data.mqtt.host);
+                $('#mqtt_port').val(data.mqtt.port);
+                $('#mqtt_username').val(data.mqtt.username);
+                $('#mqtt_password').val(data.mqtt.password);
+                $('#mqtt_topic_prefix').val(data.mqtt.topic_prefix);
+            }
+
+            if (data.ocpp) {
+              if (data.ocpp.mode == "Enabled") {
+                $('[id=ocpp_settings]').show();
+                document.getElementById("enable_ocpp").checked = true;
+                document.getElementById("enable_ocpp_label").classList.remove("ui-checkbox-off")
+                document.getElementById("enable_ocpp_label").classList.add("ui-checkbox-on")
+              } else {
+                $('[id=ocpp_settings]').hide();
+                document.getElementById("enable_ocpp").checked = false;
+                document.getElementById("enable_ocpp_label").classList.remove("ui-checkbox-on")
+                document.getElementById("enable_ocpp_label").classList.add("ui-checkbox-off")
+              }
+
+              if (data.ocpp.auto_auth == "Enabled") {
+                $('[id=ocpp_auto_auth_idtag_wrapper]').show();
+                document.getElementById("ocpp_auto_auth").checked = true;
+                document.getElementById("ocpp_auto_auth_label").classList.remove("ui-checkbox-off")
+                document.getElementById("ocpp_auto_auth_label").classList.add("ui-checkbox-on")
+              } else {
+                $('[id=ocpp_auto_auth_idtag_wrapper]').hide();
+                document.getElementById("ocpp_auto_auth").checked = false;
+                document.getElementById("ocpp_auto_auth_label").classList.remove("ui-checkbox-on")
+                document.getElementById("ocpp_auto_auth_label").classList.add("ui-checkbox-off")
+              }
+
+              if (!ocppEditMode) {
+                $('#ocpp_backend_url').val(data.ocpp.backend_url);
+                $('#ocpp_cb_id').val(data.ocpp.cb_id);
+                $('#ocpp_auth_key').val(data.ocpp.auth_key);
+                $('#ocpp_auto_auth_idtag').val(data.ocpp.auto_auth_idtag);
+              }
+
+              $('#ocpp_ws_status').text(data.ocpp.status);
+
+            } else {
+              $('[id=ocpp_config_outer]').hide();
+            }
+
+            setTimeout("loadData()", 5000);
+          });
       }
-
-      if (evt.data[0] == "I") {
-        var Irms = evt.data.split(":")[1];
-        Irms1 = Irms.split(",")[0];
-        Irms2 = Irms.split(",")[1];
-        Irms3 = Irms.split(",")[2];
-        IrmsL1.innerHTML = Irms1 + "&nbsp;A";
-        IrmsL2.innerHTML = Irms2 + "&nbsp;A";
-        IrmsL3.innerHTML = Irms3 + "&nbsp;A";
-
-        Power = Math.round((Vrms1 * Irms1) + (Vrms2 * Irms2) + (Vrms3 * Irms3));
-
-        if (Power < 0 ) document.getElementById("TotalPower").style.color = "green";
-        else document.getElementById("TotalPower").style.color = "orange";
-        TotalPower.innerHTML = Power + "&nbsp;W";
-      }
-  }
-
-  // Called when a WebSocket error occurs
-  function onError(evt) {
-      console.log("ERROR: " + evt.data);
-  }
-
-  // Sends a message to the server (and prints it to the console)
-  function doSend(message) {
-      console.log("Sending: " + message);
-      websocket.send(message);
-  }
-
-    // Call the init function as soon as the page loads
-  window.addEventListener("load", init, false);
-</script>
+  </script>
 
 
+  <!-- Page Wrapper -->
+  <div id="wrapper">
+      <!-- Content Wrapper -->
+      <div id="content-wrapper" class="d-flex flex-column">
+          <!-- Main Content -->
+          <div id="content">
+              <!-- Begin Page Content -->
+              <div class="container-fluid">
+                  <div style="margin-bottom: 20px;">
+                    <div class="card bg-success text-white shadow">
+                        <div class="card-body">
+                          <h1 class="h3 mb-0 text-white-800">Smart EVSE V3</h1>
+                          <h1 id="version" class="h5 mb-0 text-white-800">Version: </h1>
+                          <h1 id="serialnr" class="h5 mb-0 text-white-800">SmartEVSE-</h1>
+                        </div>
+                    </div>
+                </div>
+
+                  <div class="row">
+
+                    <!-- Earnings (Monthly) Card Example -->
+                    <div style="margin-bottom: 20px;">
+                        <div class="card border-left-primary shadow h-100 py-2">
+                            <div class="card-body">
+                                <div class="row no-gutters align-items-center">
+                                    <div class="col mr-2">
+                                        <div class="text font-weight-bold text-primary text-uppercase mb-1">EVSE</div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              Mode:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="mode"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center" id="loadbl">
+                                            <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              Power Sharing:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="loadbl_node"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center with_modem">
+                                            <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                                Duty cycle:
+                                            </div>
+                                            <div class="col">
+                                                <div class="h5 mb-0 mr-3 text-gray-800" id="dutycycle"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              Connected:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="car_connected"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              State:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="state"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center" id="with_errors">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              Error:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="error"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center" id="show_rfid">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              RFID:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="rfid"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              Charge:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="charge_current"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              Temp:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="temp"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              MQTT:
+                                          </div>
+                                          <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="mqtt"></div>
+                                          </div>
+                                      </div>
+                                        <div class="row no-gutters align-items-center" id="contactor2">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              Contactor 2:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="enable_C2"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              StartTime:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="starttime_date"></div>
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="starttime_time"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              StopTime:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="stoptime_date"></div>
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="stoptime_time"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              Repeat:
+                                            </div>
+                                            <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="repeat"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                  <!--  <div class="col-auto">
+                                  //      <i class="fas fa-calendar fa-2x text-gray-300">
+                                  //        <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                  //          <path fill="currentColor" d="M17.3 5C19 6.5 20 8.6 20 11C20 15.4 16.4 19 12 19S4 15.4 4 11C4 8.6 5.1 6.5 6.7 5H17.3M18 3H6L5.4 3.5C3.2 5.4 2 8.1 2 11C2 16.5 6.5 21 12 21S22 16.5 22 11C22 8.1 20.8 5.4 18.6 3.5L18 3M13 7.5C13 8.3 13.7 9 14.5 9S16 8.3 16 7.5 15.3 6 14.5 6 13 6.7 13 7.5M8 7.5C8 8.3 8.7 9 9.5 9S11 8.3 11 7.5 10.3 6 9.5 6 8 6.7 8 7.5M7 13C8.1 13 9 12.1 9 11C9 9.9 8.1 9 7 9S5 9.9 5 11C5 12.1 5.9 13 7 13M11.5 15C11.5 13.9 10.6 13 9.5 13S7.5 13.9 7.5 15C7.5 16.1 8.4 17 9.5 17S11.5 16.1 11.5 15M12 13C13.1 13 14 12.1 14 11C14 9.9 13.1 9 12 9S10 9.9 10 11C10 12.1 10.9 13 12 13M16.5 15C16.5 13.9 15.6 13 14.5 13S12.5 13.9 12.5 15C12.5 16.1 13.4 17 14.5 17S16.5 16.1 16.5 15M19 11C19 9.9 18.1 9 17 9S15 9.9 15 11C15 12.1 15.9 13 17 13S19 12.1 19 11" />
+                                  //        </svg>
+                                  //      </i>
+                                  //  </div> -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+
+                    </div>
+                    <!-- END ROW -->
+                    <div class="row">
+
+                    <div class="col-xl-4 col-md-6 mb-4 with_modem">
+                        <div class="card border-left-danger shadow h-100 py-2">
+                            <div class="card-body">
+                                <div class="row no-gutters align-items-center">
+                                    <div class="col mr-2">
+                                        <div class="text-xl font-weight-bold text-info text-uppercase mb-1">EV State</div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 150px;">
+                                              EVCCID
+                                          </div>
+                                          <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="evccid" style="text-align: right;"></div>
+                                          </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 150px;">
+                                            <span title="Estimated / computed">Current SoC</span>
+                                          </div>
+                                          <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="computed_soc" style="text-align: right;"></div>
+                                          </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 150px;">
+                                              Initial SoC
+                                          </div>
+                                          <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="initial_soc" style="text-align: right;"></div>
+                                          </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 150px;">
+                                              Full SoC
+                                          </div>
+                                          <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="full_soc" style="text-align: right;"></div>
+                                          </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 150px;">
+                                            <span title="Estimated / computed">Est. full at</span>
+                                          </div>
+                                          <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="full_at" style="text-align: right;"></div>
+                                          </div>
+                                        </div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 150px;">
+                                              Capacity
+                                          </div>
+                                          <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="energy_capacity" style="text-align: right;"></div>
+                                          </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-auto">
+                                      <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                        <svg style="width:48px;height:48px" viewBox="0 0 28.1 49.61" xmlns="http://www.w3.org/2000/svg">
+                                         <path fill="currentColor" d="m28.09 45.183c0.0041 2.4411-1.9714 4.4234-4.4125 4.4275h-19.25c-2.4418-0.008231-4.4193-1.9857-4.4275-4.4275l5e-14 -34.794c-0.0013809-2.4535 1.9865-4.4436 4.44-4.445h19.25c2.447 0.0055 4.4238 1.998 4.41 4.445zm-23.65 2.9275h19.215c1.6244 0.0028 2.9454-1.3081 2.955-2.9325v-34.794c-0.0055-1.6297-1.3253-2.9495-2.955-2.955h-19.215c-1.6346 0.0014-2.9597 1.3254-2.9625 2.96v34.794c0.012382 1.6253 1.3371 2.9344 2.9625 2.9275zm20.682-2.9325c0.0042 0.81657-0.65592 1.4811-1.4725 1.4825h-19.217c-0.816 0-1.4775-0.6615-1.4775-1.4775v-20.361c0.00138-0.81462 0.66288-1.4739 1.4775-1.4725h19.217c0.81267 0.0014 1.4711 0.65983 1.4725 1.4725zm-16.255-40.712c0.074087-2.7158 2.4778-4.7733 5.1725-4.4275 2.6969-0.34712 5.1042 1.7095 5.1825 4.4275z" />
+                                        </svg>
+                                      </i>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-4 col-md-6 mb-4">
+                      <div class="card border-left-info shadow h-100 py-2">
+                          <div class="card-body">
+                              <div class="row no-gutters align-items-center">
+                                  <div class="col mr-2">
+                                      <div class="text-xl font-weight-bold text-info text-uppercase mb-1">Current Details</div>
+                                      <div class="row no-gutters align-items-center">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                            Override:
+                                          </div>
+                                          <div class="col">
+                                            <div class="h5 mb-0 mr-3 text-gray-800" id="override_current" style="text-align: right;"></div>
+                                          </div>
+                                      </div>
+                                      <div class="row no-gutters align-items-center">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                            Min:
+                                          </div>
+                                          <div class="col">
+                                            <div class="h5 mb-0 mr-3 text-gray-800" id="current_min" style="text-align: right;"></div>
+                                          </div>
+                                      </div>
+                                      <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                            Max:
+                                          </div>
+                                          <div class="col">
+                                            <div class="h5 mb-0 mr-3 text-gray-800" id="current_max" style="text-align: right;"></div>
+                                          </div>
+                                      </div>
+                                  </div>
+                                  <div class="col-auto">
+                                      <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                        <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                          <path fill="currentColor" d="M16.5,21C13.5,21 12.31,16.76 11.05,12.28C10.14,9.04 9,5 7.5,5C4.11,5 4,11.93 4,12H2C2,11.63 2.06,3 7.5,3C10.5,3 11.71,7.25 12.97,11.74C13.83,14.8 15,19 16.5,19C19.94,19 20.03,12.07 20.03,12H22.03C22.03,12.37 21.97,21 16.5,21Z" />
+                                      </svg>
+                                      </i>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div class="col-xl-4 col-md-6 mb-4" id="with_mainsmeter" style="display: none;">
+                    <div class="card border-left-success shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xl font-weight-bold text-info text-uppercase mb-1">Phase Details</div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          Total:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="phase_total" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          L1:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="phase_1" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          L2:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="phase_2" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          L3:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="phase_3" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center" id="with_p1_api_data_date">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          Date:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="p1_data_date" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center" id="with_p1_api_data_time">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          Time:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="p1_data_time" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                      <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                        <path fill="currentColor" d="M16.5,21C13.5,21 12.31,16.76 11.05,12.28C10.14,9.04 9,5 7.5,5C4.11,5 4,11.93 4,12H2C2,11.63 2.06,3 7.5,3C10.5,3 11.71,7.25 12.97,11.74C13.83,14.8 15,19 16.5,19C19.94,19 20.03,12.07 20.03,12H22.03C22.03,12.37 21.97,21 16.5,21Z" />
+                                    </svg>
+                                    </i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-4 col-md-6 mb-4" id="with_homebattery">
+                  <div class="card border-left-success shadow h-100 py-2">
+                      <div class="card-body">
+                          <div class="row no-gutters align-items-center">
+                              <div class="col mr-2">
+                                  <div class="text-xl font-weight-bold text-info text-uppercase mb-1">Phase Details (Original)</div>
+                                  <div class="row no-gutters align-items-center">
+                                    <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                        Total:
+                                      </div>
+                                      <div class="col">
+                                        <div class="h5 mb-0 mr-3 text-gray-800" id="phase_original_total" style="text-align: right;"></div>
+                                      </div>
+                                  </div>
+                                  <div class="row no-gutters align-items-center">
+                                    <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                        L1:
+                                      </div>
+                                      <div class="col">
+                                        <div class="h5 mb-0 mr-3 text-gray-800" id="phase_original_1" style="text-align: right;"></div>
+                                      </div>
+                                  </div>
+                                  <div class="row no-gutters align-items-center">
+                                    <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                        L2:
+                                      </div>
+                                      <div class="col">
+                                        <div class="h5 mb-0 mr-3 text-gray-800" id="phase_original_2" style="text-align: right;"></div>
+                                      </div>
+                                  </div>
+                                  <div class="row no-gutters align-items-center">
+                                    <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                        L3:
+                                      </div>
+                                      <div class="col">
+                                        <div class="h5 mb-0 mr-3 text-gray-800" id="phase_original_3" style="text-align: right;"></div>
+                                      </div>
+                                  </div>
+                              </div>
+                              <div class="col-auto">
+                                  <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                    <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                      <path fill="currentColor" d="M16.5,21C13.5,21 12.31,16.76 11.05,12.28C10.14,9.04 9,5 7.5,5C4.11,5 4,11.93 4,12H2C2,11.63 2.06,3 7.5,3C10.5,3 11.71,7.25 12.97,11.74C13.83,14.8 15,19 16.5,19C19.94,19 20.03,12.07 20.03,12H22.03C22.03,12.37 21.97,21 16.5,21Z" />
+                                  </svg>
+                                  </i>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+              </div>
+
+
+              <div class="col-xl-4 col-md-6 mb-4" id="with_evmeter" style="display: none;">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xl font-weight-bold text-info text-uppercase mb-1">EV Meter</div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      Description:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_description" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      Power:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_power" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      Total kWh:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_total_kwh" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                    Charged kWh:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_charged_kwh" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                  <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                    <path fill="currentColor" d="M17.3 5C19 6.5 20 8.6 20 11C20 15.4 16.4 19 12 19S4 15.4 4 11C4 8.6 5.1 6.5 6.7 5H17.3M18 3H6L5.4 3.5C3.2 5.4 2 8.1 2 11C2 16.5 6.5 21 12 21S22 16.5 22 11C22 8.1 20.8 5.4 18.6 3.5L18 3M13 7.5C13 8.3 13.7 9 14.5 9S16 8.3 16 7.5 15.3 6 14.5 6 13 6.7 13 7.5M8 7.5C8 8.3 8.7 9 9.5 9S11 8.3 11 7.5 10.3 6 9.5 6 8 6.7 8 7.5M7 13C8.1 13 9 12.1 9 11C9 9.9 8.1 9 7 9S5 9.9 5 11C5 12.1 5.9 13 7 13M11.5 15C11.5 13.9 10.6 13 9.5 13S7.5 13.9 7.5 15C7.5 16.1 8.4 17 9.5 17S11.5 16.1 11.5 15M12 13C13.1 13 14 12.1 14 11C14 9.9 13.1 9 12 9S10 9.9 10 11C10 12.1 10.9 13 12 13M16.5 15C16.5 13.9 15.6 13 14.5 13S12.5 13.9 12.5 15C12.5 16.1 13.4 17 14.5 17S16.5 16.1 16.5 15M19 11C19 9.9 18.1 9 17 9S15 9.9 15 11C15 12.1 15.9 13 17 13S19 12.1 19 11" />
+                                  </svg>
+                                </i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+              </div>
+
+
+              <div class="col-xl-4 col-md-6 mb-4" id="with_evmeter" style="display: none;">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xl font-weight-bold text-info text-uppercase mb-1">EV Meter currents</div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      Total:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_currents_total" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      L1:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_currents_1" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      L2:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_currents_2" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      L3:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_currents_3" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                  <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                    <path fill="currentColor" d="M17.3 5C19 6.5 20 8.6 20 11C20 15.4 16.4 19 12 19S4 15.4 4 11C4 8.6 5.1 6.5 6.7 5H17.3M18 3H6L5.4 3.5C3.2 5.4 2 8.1 2 11C2 16.5 6.5 21 12 21S22 16.5 22 11C22 8.1 20.8 5.4 18.6 3.5L18 3M13 7.5C13 8.3 13.7 9 14.5 9S16 8.3 16 7.5 15.3 6 14.5 6 13 6.7 13 7.5M8 7.5C8 8.3 8.7 9 9.5 9S11 8.3 11 7.5 10.3 6 9.5 6 8 6.7 8 7.5M7 13C8.1 13 9 12.1 9 11C9 9.9 8.1 9 7 9S5 9.9 5 11C5 12.1 5.9 13 7 13M11.5 15C11.5 13.9 10.6 13 9.5 13S7.5 13.9 7.5 15C7.5 16.1 8.4 17 9.5 17S11.5 16.1 11.5 15M12 13C13.1 13 14 12.1 14 11C14 9.9 13.1 9 12 9S10 9.9 10 11C10 12.1 10.9 13 12 13M16.5 15C16.5 13.9 15.6 13 14.5 13S12.5 13.9 12.5 15C12.5 16.1 13.4 17 14.5 17S16.5 16.1 16.5 15M19 11C19 9.9 18.1 9 17 9S15 9.9 15 11C15 12.1 15.9 13 17 13S19 12.1 19 11" />
+                                  </svg>
+                                </i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+              </div>
+
+              <div class="col-xl-4 col-md-6 mb-4" id="with_homebattery" style="display: none;">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xl font-weight-bold text-info text-uppercase mb-1">Home Battery</div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                      Status:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="battery_status" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                      Current:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="battery_current" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                      Date:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="battery_last_update_date" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                      Time:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="battery_last_update_time" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                  <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                    <path fill="currentColor" d="M16 20H8V6H16M16.67 4H15V2H9V4H7.33C6.6 4 6 4.6 6 5.33V20.67C6 21.4 6.6 22 7.33 22H16.67C17.41 22 18 21.41 18 20.67V5.33C18 4.6 17.4 4 16.67 4M15 16H9V19H15V16M15 7H9V10H15V7M15 11.5H9V14.5H15V11.5Z" />
+                                </svg>
+                                </i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+              </div>
+            </div>
+            <!-- END ROW -->
+              <div class="row">
+
+                <script>
+                    function activate(mode) {
+                      var starttime = document.querySelector('input[name="starttime"]').value;
+                      var stoptime = document.querySelector('input[name="stoptime"]').value;
+                      var repeat2 = +document.getElementById('daily_repeat').checked;
+                      if (mode == 1 || mode == 2 || mode == 3) {
+                        override_current=$('#mode_override_current').val();
+                        $.post( "/settings?mode=" + mode +  "&override_current=" + (override_current * 10) + "&starttime=" + starttime + "&stoptime=" + stoptime + "&repeat=" + repeat2);
+                      } else {
+                        $.post( "/settings?mode=" + mode  + "&starttime=" + starttime + "&stoptime=" + stoptime + "&repeat=" + repeat2);
+                      }
+                      event.preventDefault();
+                    }
+                    function toggleMqttEdit() {
+                        mqttEditMode = !mqttEditMode;
+                        $('.mqtt_settings').toggle();
+                        if (mqttEditMode) {
+                            $('#edit_mqtt_button').text("Close Settings")
+                        } else {
+                            $('#edit_mqtt_button').text("Edit Settings")
+                        }
+                    }
+                    function configureMqtt() {
+                        var mqtt_host=$('#mqtt_host').val();
+                        var mqtt_port=$('#mqtt_port').val();
+                        var mqtt_username=$('#mqtt_username').val();
+                        var mqtt_password=$('#mqtt_password').val();
+                        var mqtt_topic_prefix=$('#mqtt_topic_prefix').val();
+
+                        if (mqtt_host == "") {
+                            mqtt_host = "%00";
+                        }
+
+                        if (mqtt_username == "") {
+                            mqtt_username = "%00";
+                        }
+
+                        if (mqtt_password == "") {
+                            mqtt_password = "%00";
+                        }
+
+                        if (mqtt_host && mqtt_port) {
+                            $.post( "/settings?mqtt_update=1&mqtt_host=" + mqtt_host +
+                                "&mqtt_port=" + mqtt_port + "&mqtt_username=" + mqtt_username +
+                                "&mqtt_password=" + mqtt_password + "&mqtt_topic_prefix=" + mqtt_topic_prefix);
+                            alert('Settings applied');
+                            toggleMqttEdit();
+                        } else {
+                            alert('Missing broker IP or port');
+                        }
+
+                        event.preventDefault();
+                    }
+                    function toggleEnableOcpp() {
+                      var enableOcppCheckbox = document.getElementById("enable_ocpp");
+                      $.post( "/settings?ocpp_update=1&ocpp_mode=" + (enableOcppCheckbox.checked == true ? 1 : 0));
+                    }
+                    function toggleEnableOcppAutoAuth() {
+                      var autoAuthCheckbox = document.getElementById("ocpp_auto_auth");
+                      $.post( "/settings?ocpp_update=1&ocpp_auto_auth=" + (autoAuthCheckbox.checked == true ? 1 : 0));
+                    }
+                    function toggleOcppEdit() {
+                        ocppEditMode = !ocppEditMode;
+                        if (ocppEditMode) {
+                            $('#ocpp_save_btn').text("Save");
+                            $('#ocpp_backend_url').prop("disabled",false);
+                            $('#ocpp_cb_id').prop("disabled",false);
+                            $('#ocpp_auth_key').prop("disabled",false);
+                            $('#ocpp_auto_auth').prop("disabled",false);
+                            $('#ocpp_auto_auth_label').prop("disabled",false);
+                            $('#ocpp_auto_auth_idtag').prop("disabled",false);
+                            document.getElementById("ocpp_backend_url").classList.remove("ui-state-disabled");
+                            document.getElementById("ocpp_cb_id").classList.remove("ui-state-disabled");
+                            document.getElementById("ocpp_auth_key").classList.remove("ui-state-disabled");
+                            document.getElementById("ocpp_auto_auth").classList.remove("ui-state-disabled");
+                            document.getElementById("ocpp_auto_auth_label").classList.remove("ui-state-disabled");
+                            document.getElementById("ocpp_auto_auth_idtag").classList.remove("ui-state-disabled");
+                        } else {
+                            configureOcpp();
+                            $('#ocpp_save_btn').text("Edit Settings");
+                            $('#ocpp_backend_url').prop("disabled",true);
+                            $('#ocpp_cb_id').prop("disabled",true);
+                            $('#ocpp_auth_key').prop("disabled",true);
+                            $('#ocpp_auto_auth').prop("disabled",true);
+                            $('#ocpp_auto_auth_label').prop("disabled",true);
+                            $('#ocpp_auto_auth_idtag').prop("disabled",true);
+                            document.getElementById("ocpp_backend_url").classList.add("ui-state-disabled");
+                            document.getElementById("ocpp_cb_id").classList.add("ui-state-disabled");
+                            document.getElementById("ocpp_auth_key").classList.add("ui-state-disabled");
+                            document.getElementById("ocpp_auto_auth").classList.add("ui-state-disabled");
+                            document.getElementById("ocpp_auto_auth_label").classList.add("ui-state-disabled");
+                            document.getElementById("ocpp_auto_auth_idtag").classList.add("ui-state-disabled");
+                        }
+                    }
+                    function configureOcpp() {
+                        var ocpp_backend_url=$('#ocpp_backend_url').val();
+                        var ocpp_cb_id=$('#ocpp_cb_id').val();
+                        var ocpp_auth_key=$('#ocpp_auth_key').val();
+                        var ocpp_auto_auth_idtag=$('#ocpp_auto_auth_idtag').val();
+
+                        $.post( "/settings?ocpp_update=1&ocpp_backend_url=" + ocpp_backend_url +
+                            "&ocpp_cb_id=" + ocpp_cb_id + "&ocpp_auth_key=" + ocpp_auth_key +
+                            "&ocpp_auto_auth_idtag=" + ocpp_auto_auth_idtag);
+
+                        event.preventDefault();
+                    }
+                    function reboot() {
+                        $.post( "/reboot");
+                    }
+                    function update() {
+                      window.location.href = "/update";
+                    }
+                    function rawData() {
+                      window.location.href = "/settings";
+                    }
+                    function postPWM(value) {
+                       $.post("/settings?override_pwm=" + value);
+                       event.preventDefault();
+                     }
+                     function postRequiredEVCCID() {
+                      var required_evccid=$('#required_evccid').val();
+                       $.post("/settings?required_evccid=" + required_evccid);
+                       event.preventDefault();
+                     }
+                </script>
+
+                <!-- Earnings (Monthly) Card Example -->
+                <div style="margin-bottom: 20px;">
+                    <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Control</div>
+<!--
+                                      <div class="row no-gutters align-items-center" id="loadbl_text">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                         Load Balance:
+                                        </div>
+                                      <div class="col h5 mb-0 mr-3 font-weight-bold text-gray-800">
+                                          <span id="loadbl_text_slave">Slave node - control is disabled, perform changes on Master node.</span>
+                                          <span id="loadbl_text_master">Master node - control changes are propagated to Slave node(s).</span>
+                                      </div>
+                                    </div>
+-->                                    
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                          Mode:
+                                        </div>
+                                        <div class="col">
+                                          <form class="form-inline" id="form_mode">
+                                            <button id="mode_0" onclick="activate('0')" style="width: 100px; display:inline-block;">OFF</button>
+                                            <button id="mode_1" onclick="activate('1')" style="width: 120px; display:inline-block;">NORMAL</button>
+                                            <div id="with_mainsmeter" style="display: inline">
+                                              <button id="mode_2" onclick="activate('2')" style="width: 100px; display:inline-block;">SOLAR</button>
+                                              <button id="mode_3" onclick="activate('3')" style="width: 100px; display:inline-block;">SMART</button>
+                                            </div>
+                                            <div class="form-group">
+                                              <label for="starttime">...STARTING: </label>
+                                              <div class="input-group">
+                                                <input type="datetime-local" id="starttime" name="starttime" class="form-control" style="max-width: 220px;">
+                                              </div>
+                                            </div>
+                                            <div class="form-group" id="stoptime_group">
+                                              <label for="stoptime"> ENDING:</label>
+                                              <div class="input-group">
+                                                <input type="datetime-local" id="stoptime" name="stoptime" class="form-control" style="max-width: 220px;">
+                                              </div>
+                                            </div>
+                                            <div class="form-group" id="daily_repeat_group">
+                                              <label for="daily_repeat"> Daily</label>
+                                              <div class="input-group">
+                                                <input type="checkbox" id="daily_repeat" name="daily_repeat" class="form-control" value="daily" style="max-width: 60px;">
+                                              </div>
+                                            </div>
+                                          </form>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;" id="override_current_box">
+                                          Current:
+                                        </div>
+                                        <div class="col" id="override_current_box2">
+                                          <select id="mode_override_current">
+                                              <option id="mode_overide_current_text" value="0">Ampere (press NORMAL/SMART to set)</option>
+                                          </select>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                          Actions:
+                                        </div>
+                                        <div class="col">
+                                          <button onclick="reboot()" style="width: 100px; display:inline-block;">Reboot</button>
+                                          <button onclick="update()" style="width: 100px; display:inline-block;">Update</button>
+                                          <button onclick="rawData()" style="width: 120px; display:inline-block;">Raw Data</button>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center with_modem">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                            Override PWM:
+                                        </div>
+                                        <div class="col">
+                                          <form class="form-inline" id="form_pwm">
+                                            <button onclick="postPWM(0)" style="width: 120px; display:inline-block;">0&#37;</button>
+                                            <button onclick="postPWM(50)" style="width: 120px; display:inline-block;">5&#37;</button>
+                                            <button onclick="postPWM(1024)" style="width: 120px; display:inline-block;">100&#37;</button>
+                                            <button onclick="postPWM(-1)" style="width: 120px; display:inline-block;">reset</button>
+                                          </form>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center with_modem">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                          AutoCharge:
+                                      </div>
+                                      <div class="col">
+                                        <form class="form-inline" id="form_required_evccid">
+                                          <input placeholder="EVCCID to require" id="required_evccid">
+                                          <button onclick="postRequiredEVCCID()" style="width: 120px; display:inline-block;">Update</button>
+                                        </form>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                  <div style="margin-bottom: 20px;" class="config">
+                      <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Config</div>
+                                    <div class="row no-gutters align-items-center" id="mqtt_config">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                            MQTT:
+                                        </div>
+                                        <div class="col">
+                                            <button onclick="toggleMqttEdit()" style="display:inline-block;" id="edit_mqtt_button">Edit Settings</button>
+                                            <div class="mqtt_settings" style="display:none">
+                                                <label>Host: <input id="mqtt_host"></label>
+                                                <label>Port: <input id="mqtt_port"></label>
+                                                <label>Username: <input id="mqtt_username"></label>
+                                                <label>Password: <input id="mqtt_password"></label>
+                                                <label>Topic Prefix: <input id="mqtt_topic_prefix"></label>
+                                                <button onclick="configureMqtt()" style="display:inline-block;">Save</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="ocpp_config_outer" style="margin-bottom: 20px;" class="config">
+                      <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Config</div>
+                                    <div class="row no-gutters align-items-center" id="ocpp_config">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                            OCPP:
+                                        </div>
+                                        <div class="col">
+                                          <input type="checkbox" class="form-check-input" id="enable_ocpp" onclick="toggleEnableOcpp()">
+                                          <label class="form-check-label" for="enable_ocpp" id="enable_ocpp_label">Enable OCPP</label>
+                                          <div id="ocpp_settings" style="display: none;">
+                                              <div class="row no-gutters align-items-center" style="margin-top:20px;margin-bottom:10px">
+                                                <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 200px">
+                                                    WebSocket status:
+                                                </div>
+                                                <div class="col">
+                                                  <div class="h5 mb-0 mr-3 text-gray-800" id="ocpp_ws_status"></div>
+                                                </div>
+                                              </div>
+                                              <label>Backend URL: <input id="ocpp_backend_url" class="ui-state-disabled"></label>
+                                              <label>Charge Box Id: <input id="ocpp_cb_id" class="ui-state-disabled"></label>
+                                              <label>Authentication key: <input id="ocpp_auth_key" class="ui-state-disabled"></label>
+                                              <div class="row no-gutters align-items-center" style="margin-top:20px;margin-bottom:10px">
+                                                <div class="col-auto mb-0 mr-3" style="width: 200px">
+                                                  <input type="checkbox" class="form-check-input ui-state-disabled" id="ocpp_auto_auth" onclick="toggleEnableOcppAutoAuth()">
+                                                  <label class="form-check-label ui-state-disabled" for="ocpp_auto_auth" id="ocpp_auto_auth_label">Auto-authorize</label>
+                                                </div>
+                                                <div class="col">
+                                                  <div class="mb-0" id="ocpp_auto_auth_idtag_wrapper">
+                                                    <input id="ocpp_auto_auth_idtag" class="ui-state-disabled" placeholder="Default idTag">
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              <button id="ocpp_save_btn" onclick="toggleOcppEdit()" style="display:inline-block;">Edit Settings</button>
+                                          </div>
+                                        </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      </div>
+  </div>
+  <script>
+    // Get the current date and time
+    var now = new Date();
+    $('[id=stoptime_group]').hide();
+    $('[id=daily_repeat_group]').hide();
+
+    // Format the date and time as a string that can be used as the value of the input field
+    var dateString = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
+    var timeString = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
+    var dateTimeString = dateString + 'T' + timeString;
+
+    // Set the value of the input field to the current date and time
+    document.getElementById('starttime').value = dateTimeString;
+    document.getElementById('stoptime').value = dateTimeString;
+    document.getElementById('starttime').onchange = function () {
+        $('[id=stoptime_group]').show();
+    }
+    document.getElementById('stoptime').onchange = function () {
+        $('[id=daily_repeat_group]').show();
+    }
+    $('daily_repeat').prop('checked', false);
+  </script>
 </body>
 </html>
