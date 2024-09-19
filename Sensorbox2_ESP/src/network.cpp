@@ -55,6 +55,7 @@ bool shouldReboot = false;
 extern void write_settings(void);
 extern void StopwebServer(void); //TODO or move over to network.cpp?
 extern void StartwebServer(void); //TODO or move over to network.cpp?
+extern bool handle_URI(struct mg_http_message *hm);
 
 extern uint32_t serialnr;
 extern Preferences preferences;
@@ -1133,878 +1134,881 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
     request->setMessage(hm);
 //make mongoose 7.14 compatible with 7.13
 #define mg_http_match_uri(X,Y) mg_match(X->uri, mg_str(Y), NULL)
-    if (mg_match(hm->uri, mg_str("/erasesettings"), NULL)) {
-        mg_http_reply(c, 200, "Content-Type: text/plain\r\n", "Erasing settings, rebooting");
-        if ( preferences.begin("settings", false) ) {         // our own settings
-          preferences.clear();
-          preferences.end();
-        }
-        if (preferences.begin("nvs.net80211", false) ) {      // WiFi settings used by ESP
-          preferences.clear();
-          preferences.end();       
-        }
-        ESP.restart();
-/*    } else if (mg_http_match_uri(hm, "/autoupdate")) {
-        char owner[40];
-        char buf[8];
-        int debug;
-        mg_http_get_var(&hm->query, "owner", owner, sizeof(owner));
-        mg_http_get_var(&hm->query, "debug", buf, sizeof(buf));
-        debug = strtol(buf, NULL, 0);
-        if (!memcmp(owner, OWNER_FACT, sizeof(OWNER_FACT)) || (!memcmp(owner, OWNER_COMM, sizeof(OWNER_COMM)))) {
-            asprintf(&downloadUrl, "%s/%s_firmware.%ssigned.bin", FW_DOWNLOAD_PATH, owner, debug ? "debug.": ""); //will be freed in FirmwareUpdate() ; format: http://s3.com/fact_firmware.debug.signed.bin
-            RunFirmwareUpdate();
-        }                                                                       // after the first call we just report progress
-        DynamicJsonDocument doc(64); // https://arduinojson.org/v6/assistant/
-        doc["progress"] = downloadProgress;
-        doc["size"] = downloadSize;
-        String json;
-        serializeJson(doc, json);
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
-    } else if (mg_http_match_uri(hm, "/update")) {
-        //modified version of mg_http_upload
-        char buf[20] = "0", file[40];
-        size_t max_size = 0x1B0000;                                             //from partition_custom.csv
-        long res = 0, offset, size;
-        mg_http_get_var(&hm->query, "offset", buf, sizeof(buf));
-        mg_http_get_var(&hm->query, "file", file, sizeof(file));
-        offset = strtol(buf, NULL, 0);
-        buf[0] = '0';
-        mg_http_get_var(&hm->query, "size", buf, sizeof(buf));
-        size = strtol(buf, NULL, 0);
-        if (hm->body.len == 0) {
-          struct mg_http_serve_opts opts = {.root_dir = "/data", .ssi_pattern = NULL, .extra_headers = NULL, .mime_types = NULL, .page404 = NULL, .fs = &mg_fs_packed };
-          mg_http_serve_file(c, hm, "/data/update2.html", &opts);
-        } else if (file[0] == '\0') {
-          mg_http_reply(c, 400, "", "file required");
-          res = -1;
-        } else if (offset < 0) {
-          mg_http_reply(c, 400, "", "offset required");
-          res = -3;
-        } else if ((size_t) offset + hm->body.len > max_size) {
-          mg_http_reply(c, 400, "", "over max size of %lu", (unsigned long) max_size);
-          res = -4;
-        } else if (size <= 0) {
-          mg_http_reply(c, 400, "", "size required");
-          res = -5;
-        } else {
-            if (!memcmp(file,"firmware.bin", sizeof("firmware.bin")) || !memcmp(file,"firmware.debug.bin", sizeof("firmware.debug.bin"))) {
-                if(!offset) {
-                    _LOG_A("Update Start: %s\n", file);
-                    if(!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000), U_FLASH) {
+    // handles URI, returns true if handled, false if not
+    if (!handle_URI(hm)) {
+        if (mg_match(hm->uri, mg_str("/erasesettings"), NULL)) {
+            mg_http_reply(c, 200, "Content-Type: text/plain\r\n", "Erasing settings, rebooting");
+            if ( preferences.begin("settings", false) ) {         // our own settings
+              preferences.clear();
+              preferences.end();
+            }
+            if (preferences.begin("nvs.net80211", false) ) {      // WiFi settings used by ESP
+              preferences.clear();
+              preferences.end();       
+            }
+            ESP.restart();
+    /*    } else if (mg_http_match_uri(hm, "/autoupdate")) {
+            char owner[40];
+            char buf[8];
+            int debug;
+            mg_http_get_var(&hm->query, "owner", owner, sizeof(owner));
+            mg_http_get_var(&hm->query, "debug", buf, sizeof(buf));
+            debug = strtol(buf, NULL, 0);
+            if (!memcmp(owner, OWNER_FACT, sizeof(OWNER_FACT)) || (!memcmp(owner, OWNER_COMM, sizeof(OWNER_COMM)))) {
+                asprintf(&downloadUrl, "%s/%s_firmware.%ssigned.bin", FW_DOWNLOAD_PATH, owner, debug ? "debug.": ""); //will be freed in FirmwareUpdate() ; format: http://s3.com/fact_firmware.debug.signed.bin
+                RunFirmwareUpdate();
+            }                                                                       // after the first call we just report progress
+            DynamicJsonDocument doc(64); // https://arduinojson.org/v6/assistant/
+            doc["progress"] = downloadProgress;
+            doc["size"] = downloadSize;
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
+        } else if (mg_http_match_uri(hm, "/update")) {
+            //modified version of mg_http_upload
+            char buf[20] = "0", file[40];
+            size_t max_size = 0x1B0000;                                             //from partition_custom.csv
+            long res = 0, offset, size;
+            mg_http_get_var(&hm->query, "offset", buf, sizeof(buf));
+            mg_http_get_var(&hm->query, "file", file, sizeof(file));
+            offset = strtol(buf, NULL, 0);
+            buf[0] = '0';
+            mg_http_get_var(&hm->query, "size", buf, sizeof(buf));
+            size = strtol(buf, NULL, 0);
+            if (hm->body.len == 0) {
+              struct mg_http_serve_opts opts = {.root_dir = "/data", .ssi_pattern = NULL, .extra_headers = NULL, .mime_types = NULL, .page404 = NULL, .fs = &mg_fs_packed };
+              mg_http_serve_file(c, hm, "/data/update2.html", &opts);
+            } else if (file[0] == '\0') {
+              mg_http_reply(c, 400, "", "file required");
+              res = -1;
+            } else if (offset < 0) {
+              mg_http_reply(c, 400, "", "offset required");
+              res = -3;
+            } else if ((size_t) offset + hm->body.len > max_size) {
+              mg_http_reply(c, 400, "", "over max size of %lu", (unsigned long) max_size);
+              res = -4;
+            } else if (size <= 0) {
+              mg_http_reply(c, 400, "", "size required");
+              res = -5;
+            } else {
+                if (!memcmp(file,"firmware.bin", sizeof("firmware.bin")) || !memcmp(file,"firmware.debug.bin", sizeof("firmware.debug.bin"))) {
+                    if(!offset) {
+                        _LOG_A("Update Start: %s\n", file);
+                        if(!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000), U_FLASH) {
+                                Update.printError(Serial);
+                        }
+                    }
+                    if(!Update.hasError()) {
+                        if(Update.write((uint8_t*) hm->body.buf, hm->body.len) != hm->body.len) {
                             Update.printError(Serial);
+                        } else {
+                            _LOG_A("bytes written %lu\r", offset + hm->body.len);
+                        }
                     }
-                }
-                if(!Update.hasError()) {
-                    if(Update.write((uint8_t*) hm->body.buf, hm->body.len) != hm->body.len) {
-                        Update.printError(Serial);
-                    } else {
-                        _LOG_A("bytes written %lu\r", offset + hm->body.len);
-                    }
-                }
-                if (offset + hm->body.len >= size) {                                           //EOF
-                    if(Update.end(true)) {
-                        _LOG_A("\nUpdate Success\n");
-                        delay(1000);
-                        ESP.restart();
-                    } else {
-                        Update.printError(Serial);
-                    }
-                }
-            } else //end of firmware.bin
-            if (!memcmp(file,"firmware.signed.bin", sizeof("firmware.signed.bin")) || !memcmp(file,"firmware.debug.signed.bin", sizeof("firmware.debug.signed.bin"))) {
-#define dump(X)   for (int i= 0; i< SIGNATURE_LENGTH; i++) _LOG_A_NO_FUNC("%02x", X[i]); _LOG_A_NO_FUNC(".\n");
-                if(!offset) {
-                    _LOG_A("Update Start: %s\n", file);
-                    signature = (unsigned char *) malloc(SIGNATURE_LENGTH);                       //tried to free in in all exit scenarios, RISK of leakage!!!
-                    memcpy(signature, hm->body.buf, SIGNATURE_LENGTH);          //signature is prepended to firmware.bin
-                    hm->body.buf = hm->body.buf + SIGNATURE_LENGTH;
-                    hm->body.len = hm->body.len - SIGNATURE_LENGTH;
-                    _LOG_A("Firmware signature:");
-                    dump(signature);
-                    if(!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000), U_FLASH) {
-                            Update.printError(Serial);
-                    }
-                }
-                if(!Update.hasError()) {
-                    if(Update.write((uint8_t*) hm->body.buf, hm->body.len) != hm->body.len) {
-                        Update.printError(Serial);
-                        FREE(signature);
-                    } else {
-                        _LOG_A("bytes written %lu\r", offset + hm->body.len);
-                    }
-                }
-                if (offset + hm->body.len >= size) {                                           //EOF
-                    //esp_err_t err;
-                    const esp_partition_t* target_partition = esp_ota_get_next_update_partition(NULL);              // the newly updated partition
-                    if (!target_partition) {
-                        _LOG_A("ERROR: Can't access firmware partition to check signature!");
-                        mg_http_reply(c, 400, "", "firmware.signed.bin update failed!");
-                    }
-                    const esp_partition_t* running_partition = esp_ota_get_running_partition();
-                    _LOG_V("Running off of partition %s, trying to update partition %s.\n", running_partition->label, target_partition->label);
-                    esp_ota_set_boot_partition( running_partition );            // make sure we have not switched boot partitions
-
-                    bool verification_result = false;
-                    if(Update.end(true)) {
-                        verification_result = validate_sig( target_partition, signature, size - SIGNATURE_LENGTH);
-                        FREE(signature);
-                        if (verification_result) {
-                            _LOG_A("Signature is valid!\n");
-                            esp_ota_set_boot_partition( target_partition );
+                    if (offset + hm->body.len >= size) {                                           //EOF
+                        if(Update.end(true)) {
                             _LOG_A("\nUpdate Success\n");
-                            shouldReboot = true;
-                            //ESP.restart(); does not finish the call to fn_http_server, so the last POST of apps.js gets no response....
-                            //which results in a "verify failed" message on the /update screen AFTER the reboot :-)
+                            delay(1000);
+                            ESP.restart();
+                        } else {
+                            Update.printError(Serial);
                         }
                     }
-                    if (!verification_result) {
-                        _LOG_A("Update failed!\n");
-                        Update.printError(Serial);
-                        //Update.abort(); //not sure this does anything in this stage
-                        //Update.rollBack();
-                        _LOG_V("Running off of partition %s, erasing partition %s.\n", running_partition->label, target_partition->label);
-                        esp_partition_erase_range( target_partition, target_partition->address, target_partition->size );
-                        esp_ota_set_boot_partition( running_partition );
-                        mg_http_reply(c, 400, "", "firmware.signed.bin update failed!");
+                } else //end of firmware.bin
+                if (!memcmp(file,"firmware.signed.bin", sizeof("firmware.signed.bin")) || !memcmp(file,"firmware.debug.signed.bin", sizeof("firmware.debug.signed.bin"))) {
+    #define dump(X)   for (int i= 0; i< SIGNATURE_LENGTH; i++) _LOG_A_NO_FUNC("%02x", X[i]); _LOG_A_NO_FUNC(".\n");
+                    if(!offset) {
+                        _LOG_A("Update Start: %s\n", file);
+                        signature = (unsigned char *) malloc(SIGNATURE_LENGTH);                       //tried to free in in all exit scenarios, RISK of leakage!!!
+                        memcpy(signature, hm->body.buf, SIGNATURE_LENGTH);          //signature is prepended to firmware.bin
+                        hm->body.buf = hm->body.buf + SIGNATURE_LENGTH;
+                        hm->body.len = hm->body.len - SIGNATURE_LENGTH;
+                        _LOG_A("Firmware signature:");
+                        dump(signature);
+                        if(!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000), U_FLASH) {
+                                Update.printError(Serial);
+                        }
                     }
-                    FREE(signature);
-                }
-            } else //end of firmware.signed.bin
-            if (!memcmp(file,"rfid.txt", sizeof("rfid.txt"))) {
-                if (offset != 0) {
-                    mg_http_reply(c, 400, "", "rfid.txt too big, only 100 rfid's allowed!");
-                }
-                else {
-                    //we are overwriting all stored RFID's with the ones uploaded
-                    DeleteAllRFID();
-                    res = offset + hm->body.len;
-                    unsigned int RFID_UID[8] = {1, 0, 0, 0, 0, 0, 0, 0};
-                    char RFIDtxtstring[20];                                     // 17 characters + NULL terminator
-                    int r, pos = 0;
-                    int beginpos = 0;
-                    while (pos <= hm->body.len) {
-                        char c;
-                        c = *(hm->body.buf + pos);
-                        //_LOG_A_NO_FUNC("%c", c);
-                        if (c == '\n' || pos == hm->body.len) {
-                            strncpy(RFIDtxtstring, hm->body.buf + beginpos, 19);         // in case of DOS the 0x0D is stripped off here
-                            RFIDtxtstring[19] = '\0';
-                            r = sscanf(RFIDtxtstring,"%02X%02x%02x%02x%02x%02x%02x", &RFID_UID[0], &RFID_UID[1], &RFID_UID[2], &RFID_UID[3], &RFID_UID[4], &RFID_UID[5], &RFID_UID[6]);
-                            RFID_UID[7]=crc8((unsigned char *) RFID_UID,7);
-                            if (r == 7) {
-                                _LOG_A("Store RFID_UID %02x%02x%02x%02x%02x%02x%02x, crc=%02x.\n", RFID_UID[0], RFID_UID[1], RFID_UID[2], RFID_UID[3], RFID_UID[4], RFID_UID[5], RFID_UID[6], RFID_UID[7]);
-                                LoadandStoreRFID(RFID_UID);
-                            } else {
-                                strncpy(RFIDtxtstring, hm->body.buf + beginpos, 17);         // in case of DOS the 0x0D is stripped off here
-                                RFIDtxtstring[17] = '\0';
-                                RFID_UID[0] = 0x01;
-                                r = sscanf(RFIDtxtstring,"%02x%02x%02x%02x%02x%02x", &RFID_UID[1], &RFID_UID[2], &RFID_UID[3], &RFID_UID[4], &RFID_UID[5], &RFID_UID[6]);
-                                RFID_UID[7]=crc8((unsigned char *) RFID_UID,7);
-                                if (r == 6) {
-                                    _LOG_A("Store RFID_UID %02x%02x%02x%02x%02x%02x, crc=%02x.\n", RFID_UID[1], RFID_UID[2], RFID_UID[3], RFID_UID[4], RFID_UID[5], RFID_UID[6], RFID_UID[7]);
-                                    LoadandStoreRFID(RFID_UID);
-                                }
+                    if(!Update.hasError()) {
+                        if(Update.write((uint8_t*) hm->body.buf, hm->body.len) != hm->body.len) {
+                            Update.printError(Serial);
+                            FREE(signature);
+                        } else {
+                            _LOG_A("bytes written %lu\r", offset + hm->body.len);
+                        }
+                    }
+                    if (offset + hm->body.len >= size) {                                           //EOF
+                        //esp_err_t err;
+                        const esp_partition_t* target_partition = esp_ota_get_next_update_partition(NULL);              // the newly updated partition
+                        if (!target_partition) {
+                            _LOG_A("ERROR: Can't access firmware partition to check signature!");
+                            mg_http_reply(c, 400, "", "firmware.signed.bin update failed!");
+                        }
+                        const esp_partition_t* running_partition = esp_ota_get_running_partition();
+                        _LOG_V("Running off of partition %s, trying to update partition %s.\n", running_partition->label, target_partition->label);
+                        esp_ota_set_boot_partition( running_partition );            // make sure we have not switched boot partitions
+    
+                        bool verification_result = false;
+                        if(Update.end(true)) {
+                            verification_result = validate_sig( target_partition, signature, size - SIGNATURE_LENGTH);
+                            FREE(signature);
+                            if (verification_result) {
+                                _LOG_A("Signature is valid!\n");
+                                esp_ota_set_boot_partition( target_partition );
+                                _LOG_A("\nUpdate Success\n");
+                                shouldReboot = true;
+                                //ESP.restart(); does not finish the call to fn_http_server, so the last POST of apps.js gets no response....
+                                //which results in a "verify failed" message on the /update screen AFTER the reboot :-)
                             }
-                            beginpos = pos + 1;
                         }
-                        pos++;
+                        if (!verification_result) {
+                            _LOG_A("Update failed!\n");
+                            Update.printError(Serial);
+                            //Update.abort(); //not sure this does anything in this stage
+                            //Update.rollBack();
+                            _LOG_V("Running off of partition %s, erasing partition %s.\n", running_partition->label, target_partition->label);
+                            esp_partition_erase_range( target_partition, target_partition->address, target_partition->size );
+                            esp_ota_set_boot_partition( running_partition );
+                            mg_http_reply(c, 400, "", "firmware.signed.bin update failed!");
+                        }
+                        FREE(signature);
                     }
+                } else //end of firmware.signed.bin
+                if (!memcmp(file,"rfid.txt", sizeof("rfid.txt"))) {
+                    if (offset != 0) {
+                        mg_http_reply(c, 400, "", "rfid.txt too big, only 100 rfid's allowed!");
+                    }
+                    else {
+                        //we are overwriting all stored RFID's with the ones uploaded
+                        DeleteAllRFID();
+                        res = offset + hm->body.len;
+                        unsigned int RFID_UID[8] = {1, 0, 0, 0, 0, 0, 0, 0};
+                        char RFIDtxtstring[20];                                     // 17 characters + NULL terminator
+                        int r, pos = 0;
+                        int beginpos = 0;
+                        while (pos <= hm->body.len) {
+                            char c;
+                            c = *(hm->body.buf + pos);
+                            //_LOG_A_NO_FUNC("%c", c);
+                            if (c == '\n' || pos == hm->body.len) {
+                                strncpy(RFIDtxtstring, hm->body.buf + beginpos, 19);         // in case of DOS the 0x0D is stripped off here
+                                RFIDtxtstring[19] = '\0';
+                                r = sscanf(RFIDtxtstring,"%02X%02x%02x%02x%02x%02x%02x", &RFID_UID[0], &RFID_UID[1], &RFID_UID[2], &RFID_UID[3], &RFID_UID[4], &RFID_UID[5], &RFID_UID[6]);
+                                RFID_UID[7]=crc8((unsigned char *) RFID_UID,7);
+                                if (r == 7) {
+                                    _LOG_A("Store RFID_UID %02x%02x%02x%02x%02x%02x%02x, crc=%02x.\n", RFID_UID[0], RFID_UID[1], RFID_UID[2], RFID_UID[3], RFID_UID[4], RFID_UID[5], RFID_UID[6], RFID_UID[7]);
+                                    LoadandStoreRFID(RFID_UID);
+                                } else {
+                                    strncpy(RFIDtxtstring, hm->body.buf + beginpos, 17);         // in case of DOS the 0x0D is stripped off here
+                                    RFIDtxtstring[17] = '\0';
+                                    RFID_UID[0] = 0x01;
+                                    r = sscanf(RFIDtxtstring,"%02x%02x%02x%02x%02x%02x", &RFID_UID[1], &RFID_UID[2], &RFID_UID[3], &RFID_UID[4], &RFID_UID[5], &RFID_UID[6]);
+                                    RFID_UID[7]=crc8((unsigned char *) RFID_UID,7);
+                                    if (r == 6) {
+                                        _LOG_A("Store RFID_UID %02x%02x%02x%02x%02x%02x, crc=%02x.\n", RFID_UID[1], RFID_UID[2], RFID_UID[3], RFID_UID[4], RFID_UID[5], RFID_UID[6], RFID_UID[7]);
+                                        LoadandStoreRFID(RFID_UID);
+                                    }
+                                }
+                                beginpos = pos + 1;
+                            }
+                            pos++;
+                        }
+                    }
+                } else //end of rfid.txt
+                    mg_http_reply(c, 400, "", "only allowed to flash firmware.bin, firmware.debug.bin, firmware.signed.bin, firmware.debug.signed.bin or rfid.txt");
+                mg_http_reply(c, 200, "", "%ld", res);
+            }
+        } else if (mg_http_match_uri(hm, "/settings")) {                            // REST API call?
+          if (!memcmp("GET", hm->method.buf, hm->method.len)) {                     // if GET
+            String mode = "N/A";
+            int modeId = -1;
+            if(Access_bit == 0)  {
+                mode = "OFF";
+                modeId=0;
+            } else {
+                switch(Mode) {
+                    case MODE_NORMAL: mode = "NORMAL"; modeId=1; break;
+                    case MODE_SOLAR: mode = "SOLAR"; modeId=2; break;
+                    case MODE_SMART: mode = "SMART"; modeId=3; break;
                 }
-            } else //end of rfid.txt
-                mg_http_reply(c, 400, "", "only allowed to flash firmware.bin, firmware.debug.bin, firmware.signed.bin, firmware.debug.signed.bin or rfid.txt");
-            mg_http_reply(c, 200, "", "%ld", res);
-        }
-    } else if (mg_http_match_uri(hm, "/settings")) {                            // REST API call?
-      if (!memcmp("GET", hm->method.buf, hm->method.len)) {                     // if GET
-        String mode = "N/A";
-        int modeId = -1;
-        if(Access_bit == 0)  {
-            mode = "OFF";
-            modeId=0;
-        } else {
-            switch(Mode) {
-                case MODE_NORMAL: mode = "NORMAL"; modeId=1; break;
-                case MODE_SOLAR: mode = "SOLAR"; modeId=2; break;
-                case MODE_SMART: mode = "SMART"; modeId=3; break;
             }
-        }
-        String backlight = "N/A";
-        switch(BacklightSet) {
-            case 0: backlight = "OFF"; break;
-            case 1: backlight = "ON"; break;
-            case 2: backlight = "DIMMED"; break;
-        }
-        String evstate = StrStateNameWeb[State];
-        String error = getErrorNameWeb(ErrorFlags);
-        int errorId = getErrorId(ErrorFlags);
-
-        if (ErrorFlags & NO_SUN) {
-            evstate += " - " + error;
-            error = "None";
-            errorId = 0;
-        }
-
-        boolean evConnected = pilot != PILOT_12V;                    //when access bit = 1, p.ex. in OFF mode, the STATEs are no longer updated
-
-        DynamicJsonDocument doc(1600); // https://arduinojson.org/v6/assistant/
-        doc["version"] = String(VERSION);
-        doc["serialnr"] = serialnr;
-        doc["mode"] = mode;
-        doc["mode_id"] = modeId;
-        doc["car_connected"] = evConnected;
-
-        if(WiFi.isConnected()) {
-            switch(WiFi.status()) {
-                case WL_NO_SHIELD:          doc["wifi"]["status"] = "WL_NO_SHIELD"; break;
-                case WL_IDLE_STATUS:        doc["wifi"]["status"] = "WL_IDLE_STATUS"; break;
-                case WL_NO_SSID_AVAIL:      doc["wifi"]["status"] = "WL_NO_SSID_AVAIL"; break;
-                case WL_SCAN_COMPLETED:     doc["wifi"]["status"] = "WL_SCAN_COMPLETED"; break;
-                case WL_CONNECTED:          doc["wifi"]["status"] = "WL_CONNECTED"; break;
-                case WL_CONNECT_FAILED:     doc["wifi"]["status"] = "WL_CONNECT_FAILED"; break;
-                case WL_CONNECTION_LOST:    doc["wifi"]["status"] = "WL_CONNECTION_LOST"; break;
-                case WL_DISCONNECTED:       doc["wifi"]["status"] = "WL_DISCONNECTED"; break;
-                default:                    doc["wifi"]["status"] = "UNKNOWN"; break;
+            String backlight = "N/A";
+            switch(BacklightSet) {
+                case 0: backlight = "OFF"; break;
+                case 1: backlight = "ON"; break;
+                case 2: backlight = "DIMMED"; break;
             }
-
-            doc["wifi"]["ssid"] = WiFi.SSID();    
-            doc["wifi"]["rssi"] = WiFi.RSSI();    
-            doc["wifi"]["bssid"] = WiFi.BSSIDstr();  
-        }
-        
-        doc["evse"]["temp"] = TempEVSE;
-        doc["evse"]["temp_max"] = maxTemp;
-        doc["evse"]["connected"] = evConnected;
-        doc["evse"]["access"] = Access_bit == 1;
-        doc["evse"]["mode"] = Mode;
-        doc["evse"]["loadbl"] = LoadBl;
-        doc["evse"]["pwm"] = CurrentPWM;
-        doc["evse"]["solar_stop_timer"] = SolarStopTimer;
-        doc["evse"]["state"] = evstate;
-        doc["evse"]["state_id"] = State;
-        doc["evse"]["error"] = error;
-        doc["evse"]["error_id"] = errorId;
-        doc["evse"]["rfid"] = !RFIDReader ? "Not Installed" : RFIDstatus >= 8 ? "NOSTATUS" : StrRFIDStatusWeb[RFIDstatus];
-        if (RFIDReader && RFIDReader != 6) { //RFIDLastRead not updated in Remote/OCPP mode
-            char buf[15];
-            if (RFID[0] == 0x01) {  // old reader 6 byte UID starts at RFID[1]
-                sprintf(buf, "%02X%02X%02X%02X%02X%02X", RFID[1], RFID[2], RFID[3], RFID[4], RFID[5], RFID[6]);
+            String evstate = StrStateNameWeb[State];
+            String error = getErrorNameWeb(ErrorFlags);
+            int errorId = getErrorId(ErrorFlags);
+    
+            if (ErrorFlags & NO_SUN) {
+                evstate += " - " + error;
+                error = "None";
+                errorId = 0;
+            }
+    
+            boolean evConnected = pilot != PILOT_12V;                    //when access bit = 1, p.ex. in OFF mode, the STATEs are no longer updated
+    
+            DynamicJsonDocument doc(1600); // https://arduinojson.org/v6/assistant/
+            doc["version"] = String(VERSION);
+            doc["serialnr"] = serialnr;
+            doc["mode"] = mode;
+            doc["mode_id"] = modeId;
+            doc["car_connected"] = evConnected;
+    
+            if(WiFi.isConnected()) {
+                switch(WiFi.status()) {
+                    case WL_NO_SHIELD:          doc["wifi"]["status"] = "WL_NO_SHIELD"; break;
+                    case WL_IDLE_STATUS:        doc["wifi"]["status"] = "WL_IDLE_STATUS"; break;
+                    case WL_NO_SSID_AVAIL:      doc["wifi"]["status"] = "WL_NO_SSID_AVAIL"; break;
+                    case WL_SCAN_COMPLETED:     doc["wifi"]["status"] = "WL_SCAN_COMPLETED"; break;
+                    case WL_CONNECTED:          doc["wifi"]["status"] = "WL_CONNECTED"; break;
+                    case WL_CONNECT_FAILED:     doc["wifi"]["status"] = "WL_CONNECT_FAILED"; break;
+                    case WL_CONNECTION_LOST:    doc["wifi"]["status"] = "WL_CONNECTION_LOST"; break;
+                    case WL_DISCONNECTED:       doc["wifi"]["status"] = "WL_DISCONNECTED"; break;
+                    default:                    doc["wifi"]["status"] = "UNKNOWN"; break;
+                }
+    
+                doc["wifi"]["ssid"] = WiFi.SSID();    
+                doc["wifi"]["rssi"] = WiFi.RSSI();    
+                doc["wifi"]["bssid"] = WiFi.BSSIDstr();  
+            }
+            
+            doc["evse"]["temp"] = TempEVSE;
+            doc["evse"]["temp_max"] = maxTemp;
+            doc["evse"]["connected"] = evConnected;
+            doc["evse"]["access"] = Access_bit == 1;
+            doc["evse"]["mode"] = Mode;
+            doc["evse"]["loadbl"] = LoadBl;
+            doc["evse"]["pwm"] = CurrentPWM;
+            doc["evse"]["solar_stop_timer"] = SolarStopTimer;
+            doc["evse"]["state"] = evstate;
+            doc["evse"]["state_id"] = State;
+            doc["evse"]["error"] = error;
+            doc["evse"]["error_id"] = errorId;
+            doc["evse"]["rfid"] = !RFIDReader ? "Not Installed" : RFIDstatus >= 8 ? "NOSTATUS" : StrRFIDStatusWeb[RFIDstatus];
+            if (RFIDReader && RFIDReader != 6) { //RFIDLastRead not updated in Remote/OCPP mode
+                char buf[15];
+                if (RFID[0] == 0x01) {  // old reader 6 byte UID starts at RFID[1]
+                    sprintf(buf, "%02X%02X%02X%02X%02X%02X", RFID[1], RFID[2], RFID[3], RFID[4], RFID[5], RFID[6]);
+                } else {
+                    sprintf(buf, "%02X%02X%02X%02X%02X%02X%02X", RFID[0], RFID[1], RFID[2], RFID[3], RFID[4], RFID[5], RFID[6]);
+                }
+                doc["evse"]["rfid_lastread"] = buf;
+            }
+    
+            doc["settings"]["charge_current"] = Balanced[0];
+            doc["settings"]["override_current"] = OverrideCurrent;
+            doc["settings"]["current_min"] = MinCurrent;
+            doc["settings"]["current_max"] = MaxCurrent;
+            doc["settings"]["current_main"] = MaxMains;
+            doc["settings"]["current_max_circuit"] = MaxCircuit;
+            doc["settings"]["current_max_sum_mains"] = MaxSumMains;
+            doc["settings"]["max_sum_mains_time"] = MaxSumMainsTime;
+            doc["settings"]["solar_max_import"] = ImportCurrent;
+            doc["settings"]["solar_start_current"] = StartCurrent;
+            doc["settings"]["solar_stop_time"] = StopTime;
+            doc["settings"]["enable_C2"] = StrEnableC2[EnableC2];
+            doc["settings"]["mains_meter"] = EMConfig[MainsMeter.Type].Desc;
+            doc["settings"]["starttime"] = (DelayedStartTime.epoch2 ? DelayedStartTime.epoch2 + EPOCH2_OFFSET : 0);
+            doc["settings"]["stoptime"] = (DelayedStopTime.epoch2 ? DelayedStopTime.epoch2 + EPOCH2_OFFSET : 0);
+            doc["settings"]["repeat"] = DelayedRepeat;
+    #if MODEM
+                doc["settings"]["required_evccid"] = RequiredEVCCID;
+                doc["settings"]["modem"] = "Experiment";
+    
+                doc["ev_state"]["initial_soc"] = InitialSoC;
+                doc["ev_state"]["remaining_soc"] = RemainingSoC;
+                doc["ev_state"]["full_soc"] = FullSoC;
+                doc["ev_state"]["energy_capacity"] = EnergyCapacity > 0 ? round((float)EnergyCapacity / 100)/10 : -1; //in kWh, precision 1 decimal;
+                doc["ev_state"]["energy_request"] = EnergyRequest > 0 ? round((float)EnergyRequest / 100)/10 : -1; //in kWh, precision 1 decimal
+                doc["ev_state"]["computed_soc"] = ComputedSoC;
+                doc["ev_state"]["evccid"] = EVCCID;
+                doc["ev_state"]["time_until_full"] = TimeUntilFull;
+    #endif
+    
+    #if MQTT
+            doc["mqtt"]["host"] = MQTTHost;
+            doc["mqtt"]["port"] = MQTTPort;
+            doc["mqtt"]["topic_prefix"] = MQTTprefix;
+            doc["mqtt"]["username"] = MQTTuser;
+            doc["mqtt"]["password_set"] = MQTTpassword != "";
+    
+            if (MQTTclient.connected) {
+                doc["mqtt"]["status"] = "Connected";
             } else {
-                sprintf(buf, "%02X%02X%02X%02X%02X%02X%02X", RFID[0], RFID[1], RFID[2], RFID[3], RFID[4], RFID[5], RFID[6]);
+                doc["mqtt"]["status"] = "Disconnected";
             }
-            doc["evse"]["rfid_lastread"] = buf;
-        }
-
-        doc["settings"]["charge_current"] = Balanced[0];
-        doc["settings"]["override_current"] = OverrideCurrent;
-        doc["settings"]["current_min"] = MinCurrent;
-        doc["settings"]["current_max"] = MaxCurrent;
-        doc["settings"]["current_main"] = MaxMains;
-        doc["settings"]["current_max_circuit"] = MaxCircuit;
-        doc["settings"]["current_max_sum_mains"] = MaxSumMains;
-        doc["settings"]["max_sum_mains_time"] = MaxSumMainsTime;
-        doc["settings"]["solar_max_import"] = ImportCurrent;
-        doc["settings"]["solar_start_current"] = StartCurrent;
-        doc["settings"]["solar_stop_time"] = StopTime;
-        doc["settings"]["enable_C2"] = StrEnableC2[EnableC2];
-        doc["settings"]["mains_meter"] = EMConfig[MainsMeter.Type].Desc;
-        doc["settings"]["starttime"] = (DelayedStartTime.epoch2 ? DelayedStartTime.epoch2 + EPOCH2_OFFSET : 0);
-        doc["settings"]["stoptime"] = (DelayedStopTime.epoch2 ? DelayedStopTime.epoch2 + EPOCH2_OFFSET : 0);
-        doc["settings"]["repeat"] = DelayedRepeat;
-#if MODEM
-            doc["settings"]["required_evccid"] = RequiredEVCCID;
-            doc["settings"]["modem"] = "Experiment";
-
-            doc["ev_state"]["initial_soc"] = InitialSoC;
-            doc["ev_state"]["remaining_soc"] = RemainingSoC;
-            doc["ev_state"]["full_soc"] = FullSoC;
-            doc["ev_state"]["energy_capacity"] = EnergyCapacity > 0 ? round((float)EnergyCapacity / 100)/10 : -1; //in kWh, precision 1 decimal;
-            doc["ev_state"]["energy_request"] = EnergyRequest > 0 ? round((float)EnergyRequest / 100)/10 : -1; //in kWh, precision 1 decimal
-            doc["ev_state"]["computed_soc"] = ComputedSoC;
-            doc["ev_state"]["evccid"] = EVCCID;
-            doc["ev_state"]["time_until_full"] = TimeUntilFull;
-#endif
-
-#if MQTT
-        doc["mqtt"]["host"] = MQTTHost;
-        doc["mqtt"]["port"] = MQTTPort;
-        doc["mqtt"]["topic_prefix"] = MQTTprefix;
-        doc["mqtt"]["username"] = MQTTuser;
-        doc["mqtt"]["password_set"] = MQTTpassword != "";
-
-        if (MQTTclient.connected) {
-            doc["mqtt"]["status"] = "Connected";
-        } else {
-            doc["mqtt"]["status"] = "Disconnected";
-        }
-#endif
-
-#if ENABLE_OCPP
-        doc["ocpp"]["mode"] = OcppMode ? "Enabled" : "Disabled";
-        doc["ocpp"]["backend_url"] = OcppWsClient ? OcppWsClient->getBackendUrl() : "";
-        doc["ocpp"]["cb_id"] = OcppWsClient ? OcppWsClient->getChargeBoxId() : "";
-        doc["ocpp"]["auth_key"] = OcppWsClient ? OcppWsClient->getAuthKey() : "";
-
-        {
-            auto freevendMode = MicroOcpp::getConfigurationPublic(MO_CONFIG_EXT_PREFIX "FreeVendActive");
-            doc["ocpp"]["auto_auth"] = freevendMode && freevendMode->getBool() ? "Enabled" : "Disabled";
-            auto freevendIdTag = MicroOcpp::getConfigurationPublic(MO_CONFIG_EXT_PREFIX "FreeVendIdTag");
-            doc["ocpp"]["auto_auth_idtag"] = freevendIdTag ? freevendIdTag->getString() : "";
-        }
-
-        if (OcppWsClient && OcppWsClient->isConnected()) {
-            doc["ocpp"]["status"] = "Connected";
-        } else {
-            doc["ocpp"]["status"] = "Disconnected";
-        }
-#endif //ENABLE_OCPP
-
-        doc["home_battery"]["current"] = homeBatteryCurrent;
-        doc["home_battery"]["last_update"] = homeBatteryLastUpdate;
-
-        doc["ev_meter"]["description"] = EMConfig[EVMeter.Type].Desc;
-        doc["ev_meter"]["address"] = EVMeter.Address;
-        doc["ev_meter"]["import_active_power"] = round((float)EVMeter.PowerMeasured / 100)/10; //in kW, precision 1 decimal
-        doc["ev_meter"]["total_kwh"] = round((float)EVMeter.Energy / 100)/10; //in kWh, precision 1 decimal
-        doc["ev_meter"]["charged_kwh"] = round((float)EVMeter.EnergyCharged / 100)/10; //in kWh, precision 1 decimal
-        doc["ev_meter"]["currents"]["TOTAL"] = EVMeter.Irms[0] + EVMeter.Irms[1] + EVMeter.Irms[2];
-        doc["ev_meter"]["currents"]["L1"] = EVMeter.Irms[0];
-        doc["ev_meter"]["currents"]["L2"] = EVMeter.Irms[1];
-        doc["ev_meter"]["currents"]["L3"] = EVMeter.Irms[2];
-        doc["ev_meter"]["import_active_energy"] = round((float)EVMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
-        doc["ev_meter"]["export_active_energy"] = round((float)EVMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
-
-        doc["mains_meter"]["import_active_energy"] = round((float)MainsMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
-        doc["mains_meter"]["export_active_energy"] = round((float)MainsMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
-
-        doc["phase_currents"]["TOTAL"] = MainsMeter.Irms[0] + MainsMeter.Irms[1] + MainsMeter.Irms[2];
-        doc["phase_currents"]["L1"] = MainsMeter.Irms[0];
-        doc["phase_currents"]["L2"] = MainsMeter.Irms[1];
-        doc["phase_currents"]["L3"] = MainsMeter.Irms[2];
-        doc["phase_currents"]["last_data_update"] = phasesLastUpdate;
-        doc["phase_currents"]["original_data"]["TOTAL"] = IrmsOriginal[0] + IrmsOriginal[1] + IrmsOriginal[2];
-        doc["phase_currents"]["original_data"]["L1"] = IrmsOriginal[0];
-        doc["phase_currents"]["original_data"]["L2"] = IrmsOriginal[1];
-        doc["phase_currents"]["original_data"]["L3"] = IrmsOriginal[2];
-        
-        doc["backlight"]["timer"] = BacklightTimer;
-        doc["backlight"]["status"] = backlight;
-
-        String json;
-        serializeJson(doc, json);
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
-      } else if (!memcmp("POST", hm->method.buf, hm->method.len)) {                     // if POST
-        DynamicJsonDocument doc(512); // https://arduinojson.org/v6/assistant/
-
-        if(request->hasParam("backlight")) {
-            int backlight = request->getParam("backlight")->value().toInt();
-            BacklightTimer = backlight * BACKLIGHT;
-            doc["Backlight"] = backlight;
-        }
-
-        if(request->hasParam("current_min")) {
-            int current = request->getParam("current_min")->value().toInt();
-            if(current >= MIN_CURRENT && current <= 16 && LoadBl < 2) {
-                MinCurrent = current;
-                doc["current_min"] = MinCurrent;
-                write_settings();
+    #endif
+    
+    #if ENABLE_OCPP
+            doc["ocpp"]["mode"] = OcppMode ? "Enabled" : "Disabled";
+            doc["ocpp"]["backend_url"] = OcppWsClient ? OcppWsClient->getBackendUrl() : "";
+            doc["ocpp"]["cb_id"] = OcppWsClient ? OcppWsClient->getChargeBoxId() : "";
+            doc["ocpp"]["auth_key"] = OcppWsClient ? OcppWsClient->getAuthKey() : "";
+    
+            {
+                auto freevendMode = MicroOcpp::getConfigurationPublic(MO_CONFIG_EXT_PREFIX "FreeVendActive");
+                doc["ocpp"]["auto_auth"] = freevendMode && freevendMode->getBool() ? "Enabled" : "Disabled";
+                auto freevendIdTag = MicroOcpp::getConfigurationPublic(MO_CONFIG_EXT_PREFIX "FreeVendIdTag");
+                doc["ocpp"]["auto_auth_idtag"] = freevendIdTag ? freevendIdTag->getString() : "";
+            }
+    
+            if (OcppWsClient && OcppWsClient->isConnected()) {
+                doc["ocpp"]["status"] = "Connected";
             } else {
-                doc["current_min"] = "Value not allowed!";
+                doc["ocpp"]["status"] = "Disconnected";
             }
-        }
-
-        if(request->hasParam("current_max_sum_mains")) {
-            int current = request->getParam("current_max_sum_mains")->value().toInt();
-            if((current == 0 || (current >= 10 && current <= 600)) && LoadBl < 2) {
-                MaxSumMains = current;
-                doc["current_max_sum_mains"] = MaxSumMains;
-                write_settings();
-            } else {
-                doc["current_max_sum_mains"] = "Value not allowed!";
+    #endif //ENABLE_OCPP
+    
+            doc["home_battery"]["current"] = homeBatteryCurrent;
+            doc["home_battery"]["last_update"] = homeBatteryLastUpdate;
+    
+            doc["ev_meter"]["description"] = EMConfig[EVMeter.Type].Desc;
+            doc["ev_meter"]["address"] = EVMeter.Address;
+            doc["ev_meter"]["import_active_power"] = round((float)EVMeter.PowerMeasured / 100)/10; //in kW, precision 1 decimal
+            doc["ev_meter"]["total_kwh"] = round((float)EVMeter.Energy / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["charged_kwh"] = round((float)EVMeter.EnergyCharged / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["currents"]["TOTAL"] = EVMeter.Irms[0] + EVMeter.Irms[1] + EVMeter.Irms[2];
+            doc["ev_meter"]["currents"]["L1"] = EVMeter.Irms[0];
+            doc["ev_meter"]["currents"]["L2"] = EVMeter.Irms[1];
+            doc["ev_meter"]["currents"]["L3"] = EVMeter.Irms[2];
+            doc["ev_meter"]["import_active_energy"] = round((float)EVMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["export_active_energy"] = round((float)EVMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
+    
+            doc["mains_meter"]["import_active_energy"] = round((float)MainsMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
+            doc["mains_meter"]["export_active_energy"] = round((float)MainsMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
+    
+            doc["phase_currents"]["TOTAL"] = MainsMeter.Irms[0] + MainsMeter.Irms[1] + MainsMeter.Irms[2];
+            doc["phase_currents"]["L1"] = MainsMeter.Irms[0];
+            doc["phase_currents"]["L2"] = MainsMeter.Irms[1];
+            doc["phase_currents"]["L3"] = MainsMeter.Irms[2];
+            doc["phase_currents"]["last_data_update"] = phasesLastUpdate;
+            doc["phase_currents"]["original_data"]["TOTAL"] = IrmsOriginal[0] + IrmsOriginal[1] + IrmsOriginal[2];
+            doc["phase_currents"]["original_data"]["L1"] = IrmsOriginal[0];
+            doc["phase_currents"]["original_data"]["L2"] = IrmsOriginal[1];
+            doc["phase_currents"]["original_data"]["L3"] = IrmsOriginal[2];
+            
+            doc["backlight"]["timer"] = BacklightTimer;
+            doc["backlight"]["status"] = backlight;
+    
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
+          } else if (!memcmp("POST", hm->method.buf, hm->method.len)) {                     // if POST
+            DynamicJsonDocument doc(512); // https://arduinojson.org/v6/assistant/
+    
+            if(request->hasParam("backlight")) {
+                int backlight = request->getParam("backlight")->value().toInt();
+                BacklightTimer = backlight * BACKLIGHT;
+                doc["Backlight"] = backlight;
             }
-        }
-
-        if(request->hasParam("max_sum_mains_timer")) {
-            int time = request->getParam("max_sum_mains_timer")->value().toInt();
-            if(time >= 0 && time <= 60 && LoadBl < 2) {
-                MaxSumMainsTime = time;
-                doc["max_sum_mains_time"] = MaxSumMainsTime;
-                write_settings();
-            } else {
-                doc["max_sum_mains_time"] = "Value not allowed!";
+    
+            if(request->hasParam("current_min")) {
+                int current = request->getParam("current_min")->value().toInt();
+                if(current >= MIN_CURRENT && current <= 16 && LoadBl < 2) {
+                    MinCurrent = current;
+                    doc["current_min"] = MinCurrent;
+                    write_settings();
+                } else {
+                    doc["current_min"] = "Value not allowed!";
+                }
             }
-        }
-
-        if(request->hasParam("disable_override_current")) {
-            OverrideCurrent = 0;
-            doc["disable_override_current"] = "OK";
-        }
-
-        if(request->hasParam("mode")) {
-            String mode = request->getParam("mode")->value();
-
-            //first check if we have a delayed mode switch
-            if(request->hasParam("starttime")) {
-                String DelayedStartTimeStr = request->getParam("starttime")->value();
-                //string time_str = "2023-04-14T11:31";
-                if (!StoreTimeString(DelayedStartTimeStr, &DelayedStartTime)) {
-                    //parse OK
-                    if (DelayedStartTime.diff > 0)
-                        setAccess(0);                         //switch to OFF, we are Delayed Charging
-                    else {//we are in the past so no delayed charging
+    
+            if(request->hasParam("current_max_sum_mains")) {
+                int current = request->getParam("current_max_sum_mains")->value().toInt();
+                if((current == 0 || (current >= 10 && current <= 600)) && LoadBl < 2) {
+                    MaxSumMains = current;
+                    doc["current_max_sum_mains"] = MaxSumMains;
+                    write_settings();
+                } else {
+                    doc["current_max_sum_mains"] = "Value not allowed!";
+                }
+            }
+    
+            if(request->hasParam("max_sum_mains_timer")) {
+                int time = request->getParam("max_sum_mains_timer")->value().toInt();
+                if(time >= 0 && time <= 60 && LoadBl < 2) {
+                    MaxSumMainsTime = time;
+                    doc["max_sum_mains_time"] = MaxSumMainsTime;
+                    write_settings();
+                } else {
+                    doc["max_sum_mains_time"] = "Value not allowed!";
+                }
+            }
+    
+            if(request->hasParam("disable_override_current")) {
+                OverrideCurrent = 0;
+                doc["disable_override_current"] = "OK";
+            }
+    
+            if(request->hasParam("mode")) {
+                String mode = request->getParam("mode")->value();
+    
+                //first check if we have a delayed mode switch
+                if(request->hasParam("starttime")) {
+                    String DelayedStartTimeStr = request->getParam("starttime")->value();
+                    //string time_str = "2023-04-14T11:31";
+                    if (!StoreTimeString(DelayedStartTimeStr, &DelayedStartTime)) {
+                        //parse OK
+                        if (DelayedStartTime.diff > 0)
+                            setAccess(0);                         //switch to OFF, we are Delayed Charging
+                        else {//we are in the past so no delayed charging
+                            DelayedStartTime.epoch2 = DELAYEDSTARTTIME;
+                            DelayedStopTime.epoch2 = DELAYEDSTOPTIME;
+                            DelayedRepeat = 0;
+                        }
+                    }
+                    else {
+                        //we couldn't parse the string, so we are NOT Delayed Charging
                         DelayedStartTime.epoch2 = DELAYEDSTARTTIME;
                         DelayedStopTime.epoch2 = DELAYEDSTOPTIME;
                         DelayedRepeat = 0;
                     }
-                }
-                else {
-                    //we couldn't parse the string, so we are NOT Delayed Charging
-                    DelayedStartTime.epoch2 = DELAYEDSTARTTIME;
-                    DelayedStopTime.epoch2 = DELAYEDSTOPTIME;
-                    DelayedRepeat = 0;
-                }
-
-                // so now we might have a starttime and we might be Delayed Charging
-                if (DelayedStartTime.epoch2) {
-                    //we only accept a DelayedStopTime if we have a valid DelayedStartTime
-                    if(request->hasParam("stoptime")) {
-                        String DelayedStopTimeStr = request->getParam("stoptime")->value();
-                        //string time_str = "2023-04-14T11:31";
-                        if (!StoreTimeString(DelayedStopTimeStr, &DelayedStopTime)) {
-                            //parse OK
-                            if (DelayedStopTime.diff <= 0 || DelayedStopTime.epoch2 <= DelayedStartTime.epoch2)
-                                //we are in the past or DelayedStopTime before DelayedStartTime so no DelayedStopTime
+    
+                    // so now we might have a starttime and we might be Delayed Charging
+                    if (DelayedStartTime.epoch2) {
+                        //we only accept a DelayedStopTime if we have a valid DelayedStartTime
+                        if(request->hasParam("stoptime")) {
+                            String DelayedStopTimeStr = request->getParam("stoptime")->value();
+                            //string time_str = "2023-04-14T11:31";
+                            if (!StoreTimeString(DelayedStopTimeStr, &DelayedStopTime)) {
+                                //parse OK
+                                if (DelayedStopTime.diff <= 0 || DelayedStopTime.epoch2 <= DelayedStartTime.epoch2)
+                                    //we are in the past or DelayedStopTime before DelayedStartTime so no DelayedStopTime
+                                    DelayedStopTime.epoch2 = DELAYEDSTOPTIME;
+                            }
+                            else
+                                //we couldn't parse the string, so no DelayedStopTime
                                 DelayedStopTime.epoch2 = DELAYEDSTOPTIME;
-                        }
-                        else
-                            //we couldn't parse the string, so no DelayedStopTime
-                            DelayedStopTime.epoch2 = DELAYEDSTOPTIME;
-                        doc["stoptime"] = (DelayedStopTime.epoch2 ? DelayedStopTime.epoch2 + EPOCH2_OFFSET : 0);
-                        if(request->hasParam("repeat")) {
-                            int Repeat = request->getParam("repeat")->value().toInt();
-                            if (Repeat >= 0 && Repeat <= 1) {                                   //boundary check
-                                DelayedRepeat = Repeat;
-                                doc["repeat"] = Repeat;
+                            doc["stoptime"] = (DelayedStopTime.epoch2 ? DelayedStopTime.epoch2 + EPOCH2_OFFSET : 0);
+                            if(request->hasParam("repeat")) {
+                                int Repeat = request->getParam("repeat")->value().toInt();
+                                if (Repeat >= 0 && Repeat <= 1) {                                   //boundary check
+                                    DelayedRepeat = Repeat;
+                                    doc["repeat"] = Repeat;
+                                }
                             }
                         }
+    
                     }
-
-                }
-                doc["starttime"] = (DelayedStartTime.epoch2 ? DelayedStartTime.epoch2 + EPOCH2_OFFSET : 0);
-            } else
-                DelayedStartTime.epoch2 = DELAYEDSTARTTIME;
-
-
-            switch(mode.toInt()) {
-                case 0: // OFF
-                    ToModemWaitStateTimer = 0;
-                    ToModemDoneStateTimer = 0;
-                    LeaveModemDoneStateTimer = 0;
-                    LeaveModemDeniedStateTimer = 0;
-                    setAccess(0);
-                    break;
-                case 1:
-                    setMode(MODE_NORMAL);
-                    break;
-                case 2:
-                    setMode(MODE_SOLAR);
-                    break;
-                case 3:
-                    setMode(MODE_SMART);
-                    break;
-                default:
-                    mode = "Value not allowed!";
-            }
-            doc["mode"] = mode;
-        }
-
-        if(request->hasParam("enable_C2")) {
-            EnableC2 = (EnableC2_t) request->getParam("enable_C2")->value().toInt();
-            write_settings();
-            doc["settings"]["enable_C2"] = StrEnableC2[EnableC2];
-        }
-
-        if(request->hasParam("stop_timer")) {
-            int stop_timer = request->getParam("stop_timer")->value().toInt();
-
-            if(stop_timer >= 0 && stop_timer <= 60) {
-                StopTime = stop_timer;
-                doc["stop_timer"] = true;
-                write_settings();
-            } else {
-                doc["stop_timer"] = false;
-            }
-
-        }
-
-        if(Mode == MODE_NORMAL || Mode == MODE_SMART) {
-            if(request->hasParam("override_current")) {
-                int current = request->getParam("override_current")->value().toInt();
-                if (LoadBl < 2 && (current == 0 || (current >= ( MinCurrent * 10 ) && current <= ( MaxCurrent * 10 )))) { //OverrideCurrent not possible on Slave
-                    OverrideCurrent = current;
-                    doc["override_current"] = OverrideCurrent;
-                } else {
-                    doc["override_current"] = "Value not allowed!";
-                }
-            }
-        }
-
-        if(request->hasParam("solar_start_current")) {
-            int current = request->getParam("solar_start_current")->value().toInt();
-            if(current >= 0 && current <= 48) {
-                StartCurrent = current;
-                doc["solar_start_current"] = StartCurrent;
-                write_settings();
-            } else {
-                doc["solar_start_current"] = "Value not allowed!";
-            }
-        }
-
-        if(request->hasParam("solar_max_import")) {
-            int current = request->getParam("solar_max_import")->value().toInt();
-            if(current >= 0 && current <= 48) {
-                ImportCurrent = current;
-                doc["solar_max_import"] = ImportCurrent;
-                write_settings();
-            } else {
-                doc["solar_max_import"] = "Value not allowed!";
-            }
-        }
-
-        //special section to post stuff for experimenting with an ISO15118 modem
-        if(request->hasParam("override_pwm")) {
-            int pwm = request->getParam("override_pwm")->value().toInt();
-            if (pwm == 0){
-                CP_OFF;
-                CPDutyOverride = true;
-            } else if (pwm < 0){
-                CP_ON;
-                CPDutyOverride = false;
-                pwm = 100; // 10% until next loop, to be safe, corresponds to 6A
-            } else{
-                CP_ON;
-                CPDutyOverride = true;
-            }
-
-            SetCPDuty(pwm);
-            doc["override_pwm"] = pwm;
-        }
-
-        //allow basic plug 'n charge based on evccid
-        //if required_evccid is set to a value, SmartEVSE will only allow charging requests from said EVCCID
-        if(request->hasParam("required_evccid")) {
-            if (request->getParam("required_evccid")->value().length() <= 32) {
-                strncpy(RequiredEVCCID, request->getParam("required_evccid")->value().c_str(), sizeof(RequiredEVCCID));
-                doc["required_evccid"] = RequiredEVCCID;
-                write_settings();
-            } else {
-                doc["required_evccid"] = "EVCCID too long (max 32 char)";
-            }
-        }
-
-#if MQTT
-        if(request->hasParam("mqtt_update")) {
-            if (request->getParam("mqtt_update")->value().toInt() == 1) {
-
-                if(request->hasParam("mqtt_host")) {
-                    MQTTHost = request->getParam("mqtt_host")->value();
-                    doc["mqtt_host"] = MQTTHost;
-                }
-
-                if(request->hasParam("mqtt_port")) {
-                    MQTTPort = request->getParam("mqtt_port")->value().toInt();
-                    if (MQTTPort == 0) MQTTPort = 1883;
-                    doc["mqtt_port"] = MQTTPort;
-                }
-
-                if(request->hasParam("mqtt_topic_prefix")) {
-                    MQTTprefix = request->getParam("mqtt_topic_prefix")->value();
-                    if (!MQTTprefix || MQTTprefix == "") {
-                        MQTTprefix = APhostname;
-                    }
-                    doc["mqtt_topic_prefix"] = MQTTprefix;
-                }
-
-                if(request->hasParam("mqtt_username")) {
-                    MQTTuser = request->getParam("mqtt_username")->value();
-                    if (!MQTTuser || MQTTuser == "") {
-                        MQTTuser.clear();
-                    }
-                    doc["mqtt_username"] = MQTTuser;
-                }
-
-                if(request->hasParam("mqtt_password")) {
-                    MQTTpassword = request->getParam("mqtt_password")->value();
-                    if (!MQTTpassword || MQTTpassword == "") {
-                        MQTTpassword.clear();
-                    }
-                    doc["mqtt_password_set"] = (MQTTpassword != "");
-                }
-                write_settings();
-            }
-        }
-#endif
-
-#if ENABLE_OCPP
-        if(request->hasParam("ocpp_update")) {
-            if (request->getParam("ocpp_update")->value().toInt() == 1) {
-
-                if(request->hasParam("ocpp_mode")) {
-                    OcppMode = request->getParam("ocpp_mode")->value().toInt();
-                    doc["ocpp_mode"] = OcppMode;
-                }
-
-                if(request->hasParam("ocpp_backend_url")) {
-                    if (OcppWsClient) {
-                        OcppWsClient->setBackendUrl(request->getParam("ocpp_backend_url")->value().c_str());
-                        doc["ocpp_backend_url"] = OcppWsClient->getBackendUrl();
-                    } else {
-                        doc["ocpp_backend_url"] = "Can only update when OCPP enabled";
-                    }
-                }
-
-                if(request->hasParam("ocpp_cb_id")) {
-                    if (OcppWsClient) {
-                        OcppWsClient->setChargeBoxId(request->getParam("ocpp_cb_id")->value().c_str());
-                        doc["ocpp_cb_id"] = OcppWsClient->getChargeBoxId();
-                    } else {
-                        doc["ocpp_cb_id"] = "Can only update when OCPP enabled";
-                    }
-                }
-
-                if(request->hasParam("ocpp_auth_key")) {
-                    if (OcppWsClient) {
-                        OcppWsClient->setAuthKey(request->getParam("ocpp_auth_key")->value().c_str());
-                        doc["ocpp_auth_key"] = OcppWsClient->getAuthKey();
-                    } else {
-                        doc["ocpp_auth_key"] = "Can only update when OCPP enabled";
-                    }
-                }
-
-                if(request->hasParam("ocpp_auto_auth")) {
-                    auto freevendMode = MicroOcpp::getConfigurationPublic(MO_CONFIG_EXT_PREFIX "FreeVendActive");
-                    if (freevendMode) {
-                        freevendMode->setBool(request->getParam("ocpp_auto_auth")->value().toInt());
-                        doc["ocpp_auto_auth"] = freevendMode->getBool() ? 1 : 0;
-                    } else {
-                        doc["ocpp_auto_auth"] = "Can only update when OCPP enabled";
-                    }
-                }
-
-                if(request->hasParam("ocpp_auto_auth_idtag")) {
-                    auto freevendIdTag = MicroOcpp::getConfigurationPublic(MO_CONFIG_EXT_PREFIX "FreeVendIdTag");
-                    if (freevendIdTag) {
-                        freevendIdTag->setString(request->getParam("ocpp_auto_auth_idtag")->value().c_str());
-                        doc["ocpp_auto_auth_idtag"] = freevendIdTag->getString();
-                    } else {
-                        doc["ocpp_auto_auth_idtag"] = "Can only update when OCPP enabled";
-                    }
-                }
-
-                // Apply changes in OcppWsClient
-                if (OcppWsClient) {
-                    OcppWsClient->reloadConfigs();
-                }
-                MicroOcpp::configuration_save();
-                write_settings();
-            }
-        }
-#endif //ENABLE_OCPP
-
-        String json;
-        serializeJson(doc, json);
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
-      } else {
-        mg_http_reply(c, 404, "", "Not Found\n");
-      }
-    } else if (mg_http_match_uri(hm, "/currents") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-        DynamicJsonDocument doc(200);
-
-        if(request->hasParam("battery_current")) {
-            if (LoadBl < 2) {
-                homeBatteryCurrent = request->getParam("battery_current")->value().toInt();
-                homeBatteryLastUpdate = time(NULL);
-                doc["battery_current"] = homeBatteryCurrent;
-            } else
-                doc["battery_current"] = "not allowed on slave";
-        }
-
-        if(MainsMeter.Type == EM_API) {
-            if(request->hasParam("L1") && request->hasParam("L2") && request->hasParam("L3")) {
-                if (LoadBl < 2) {
-                    MainsMeter.Irms[0] = request->getParam("L1")->value().toInt();
-                    MainsMeter.Irms[1] = request->getParam("L2")->value().toInt();
-                    MainsMeter.Irms[2] = request->getParam("L3")->value().toInt();
-
-                    CalcIsum();
-                    for (int x = 0; x < 3; x++) {
-                        doc["original"]["L" + x] = IrmsOriginal[x];
-                        doc["L" + x] = MainsMeter.Irms[x];
-                    }
-                    doc["TOTAL"] = Isum;
-
-                    MainsMeter.Timeout = COMM_TIMEOUT;
-
+                    doc["starttime"] = (DelayedStartTime.epoch2 ? DelayedStartTime.epoch2 + EPOCH2_OFFSET : 0);
                 } else
-                    doc["TOTAL"] = "not allowed on slave";
+                    DelayedStartTime.epoch2 = DELAYEDSTARTTIME;
+    
+    
+                switch(mode.toInt()) {
+                    case 0: // OFF
+                        ToModemWaitStateTimer = 0;
+                        ToModemDoneStateTimer = 0;
+                        LeaveModemDoneStateTimer = 0;
+                        LeaveModemDeniedStateTimer = 0;
+                        setAccess(0);
+                        break;
+                    case 1:
+                        setMode(MODE_NORMAL);
+                        break;
+                    case 2:
+                        setMode(MODE_SOLAR);
+                        break;
+                    case 3:
+                        setMode(MODE_SMART);
+                        break;
+                    default:
+                        mode = "Value not allowed!";
+                }
+                doc["mode"] = mode;
             }
-        }
-
-        String json;
-        serializeJson(doc, json);
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
-
-    } else if (mg_http_match_uri(hm, "/ev_meter") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-        DynamicJsonDocument doc(200);
-
-        if(EVMeter.Type == EM_API) {
-            if(request->hasParam("L1") && request->hasParam("L2") && request->hasParam("L3")) {
-
-                EVMeter.Irms[0] = request->getParam("L1")->value().toInt();
-                EVMeter.Irms[1] = request->getParam("L2")->value().toInt();
-                EVMeter.Irms[2] = request->getParam("L3")->value().toInt();
-                EVMeter.CalcImeasured();
-                EVMeter.Timeout = COMM_EVTIMEOUT;
-                for (int x = 0; x < 3; x++)
-                    doc["ev_meter"]["currents"]["L" + x] = EVMeter.Irms[x];
-                doc["ev_meter"]["currents"]["TOTAL"] = EVMeter.Irms[0] + EVMeter.Irms[1] + EVMeter.Irms[2];
+    
+            if(request->hasParam("enable_C2")) {
+                EnableC2 = (EnableC2_t) request->getParam("enable_C2")->value().toInt();
+                write_settings();
+                doc["settings"]["enable_C2"] = StrEnableC2[EnableC2];
             }
-
-            if(request->hasParam("import_active_energy") && request->hasParam("export_active_energy") && request->hasParam("import_active_power")) {
-
-                EVMeter.Import_active_energy = request->getParam("import_active_energy")->value().toInt();
-                EVMeter.Export_active_energy = request->getParam("export_active_energy")->value().toInt();
-
-                EVMeter.PowerMeasured = request->getParam("import_active_power")->value().toInt();
-                EVMeter.UpdateEnergies();
-                doc["ev_meter"]["import_active_power"] = EVMeter.PowerMeasured;
-                doc["ev_meter"]["import_active_energy"] = EVMeter.Import_active_energy;
-                doc["ev_meter"]["export_active_energy"] = EVMeter.Export_active_energy;
-                doc["ev_meter"]["total_kwh"] = EVMeter.Energy;
-                doc["ev_meter"]["charged_kwh"] = EVMeter.EnergyCharged;
+    
+            if(request->hasParam("stop_timer")) {
+                int stop_timer = request->getParam("stop_timer")->value().toInt();
+    
+                if(stop_timer >= 0 && stop_timer <= 60) {
+                    StopTime = stop_timer;
+                    doc["stop_timer"] = true;
+                    write_settings();
+                } else {
+                    doc["stop_timer"] = false;
+                }
+    
             }
-        }
-
-        String json;
-        serializeJson(doc, json);
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
-
-*/    } else if (mg_http_match_uri(hm, "/reboot") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-        DynamicJsonDocument doc(20);
-
-        ESP.restart();
-        doc["reboot"] = true;
-
-        String json;
-        serializeJson(doc, json);
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
-/*
-#if MODEM
-    } else if (mg_http_match_uri(hm, "/ev_state") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-        DynamicJsonDocument doc(200);
-
-        //State of charge posting
-        int current_soc = request->getParam("current_soc")->value().toInt();
-        int full_soc = request->getParam("full_soc")->value().toInt();
-
-        // Energy requested by car
-        int energy_request = request->getParam("energy_request")->value().toInt();
-
-        // Total energy capacity of car's battery
-        int energy_capacity = request->getParam("energy_capacity")->value().toInt();
-
-        // Update EVCCID of car
-        if (request->hasParam("evccid")) {
-            if (request->getParam("evccid")->value().length() <= 32) {
-                strncpy(EVCCID, request->getParam("evccid")->value().c_str(), sizeof(EVCCID));
-                doc["evccid"] = EVCCID;
+    
+            if(Mode == MODE_NORMAL || Mode == MODE_SMART) {
+                if(request->hasParam("override_current")) {
+                    int current = request->getParam("override_current")->value().toInt();
+                    if (LoadBl < 2 && (current == 0 || (current >= ( MinCurrent * 10 ) && current <= ( MaxCurrent * 10 )))) { //OverrideCurrent not possible on Slave
+                        OverrideCurrent = current;
+                        doc["override_current"] = OverrideCurrent;
+                    } else {
+                        doc["override_current"] = "Value not allowed!";
+                    }
+                }
             }
-        }
-
-        if (full_soc >= FullSoC) // Only update if we received it, since sometimes it's there, sometimes it's not
-            FullSoC = full_soc;
-
-        if (energy_capacity >= EnergyCapacity) // Only update if we received it, since sometimes it's there, sometimes it's not
-            EnergyCapacity = energy_capacity;
-
-        if (energy_request >= EnergyRequest) // Only update if we received it, since sometimes it's there, sometimes it's not
-            EnergyRequest = energy_request;
-
-        if (current_soc >= 0 && current_soc <= 100) {
-            // We set the InitialSoC for our own calculations
-            InitialSoC = current_soc;
-
-            // We also set the ComputedSoC to allow for app integrations
-            ComputedSoC = current_soc;
-
-            // Skip waiting, charge since we have what we've got
-            if (State == STATE_MODEM_REQUEST || State == STATE_MODEM_WAIT || State == STATE_MODEM_DONE){
-                _LOG_A("Received SoC via REST. Shortcut to State Modem Done\n");
-                setState(STATE_MODEM_DONE); // Go to State B, which means in this case setting PWM
+    
+            if(request->hasParam("solar_start_current")) {
+                int current = request->getParam("solar_start_current")->value().toInt();
+                if(current >= 0 && current <= 48) {
+                    StartCurrent = current;
+                    doc["solar_start_current"] = StartCurrent;
+                    write_settings();
+                } else {
+                    doc["solar_start_current"] = "Value not allowed!";
+                }
             }
+    
+            if(request->hasParam("solar_max_import")) {
+                int current = request->getParam("solar_max_import")->value().toInt();
+                if(current >= 0 && current <= 48) {
+                    ImportCurrent = current;
+                    doc["solar_max_import"] = ImportCurrent;
+                    write_settings();
+                } else {
+                    doc["solar_max_import"] = "Value not allowed!";
+                }
+            }
+    
+            //special section to post stuff for experimenting with an ISO15118 modem
+            if(request->hasParam("override_pwm")) {
+                int pwm = request->getParam("override_pwm")->value().toInt();
+                if (pwm == 0){
+                    CP_OFF;
+                    CPDutyOverride = true;
+                } else if (pwm < 0){
+                    CP_ON;
+                    CPDutyOverride = false;
+                    pwm = 100; // 10% until next loop, to be safe, corresponds to 6A
+                } else{
+                    CP_ON;
+                    CPDutyOverride = true;
+                }
+    
+                SetCPDuty(pwm);
+                doc["override_pwm"] = pwm;
+            }
+    
+            //allow basic plug 'n charge based on evccid
+            //if required_evccid is set to a value, SmartEVSE will only allow charging requests from said EVCCID
+            if(request->hasParam("required_evccid")) {
+                if (request->getParam("required_evccid")->value().length() <= 32) {
+                    strncpy(RequiredEVCCID, request->getParam("required_evccid")->value().c_str(), sizeof(RequiredEVCCID));
+                    doc["required_evccid"] = RequiredEVCCID;
+                    write_settings();
+                } else {
+                    doc["required_evccid"] = "EVCCID too long (max 32 char)";
+                }
+            }
+    
+    #if MQTT
+            if(request->hasParam("mqtt_update")) {
+                if (request->getParam("mqtt_update")->value().toInt() == 1) {
+    
+                    if(request->hasParam("mqtt_host")) {
+                        MQTTHost = request->getParam("mqtt_host")->value();
+                        doc["mqtt_host"] = MQTTHost;
+                    }
+    
+                    if(request->hasParam("mqtt_port")) {
+                        MQTTPort = request->getParam("mqtt_port")->value().toInt();
+                        if (MQTTPort == 0) MQTTPort = 1883;
+                        doc["mqtt_port"] = MQTTPort;
+                    }
+    
+                    if(request->hasParam("mqtt_topic_prefix")) {
+                        MQTTprefix = request->getParam("mqtt_topic_prefix")->value();
+                        if (!MQTTprefix || MQTTprefix == "") {
+                            MQTTprefix = APhostname;
+                        }
+                        doc["mqtt_topic_prefix"] = MQTTprefix;
+                    }
+    
+                    if(request->hasParam("mqtt_username")) {
+                        MQTTuser = request->getParam("mqtt_username")->value();
+                        if (!MQTTuser || MQTTuser == "") {
+                            MQTTuser.clear();
+                        }
+                        doc["mqtt_username"] = MQTTuser;
+                    }
+    
+                    if(request->hasParam("mqtt_password")) {
+                        MQTTpassword = request->getParam("mqtt_password")->value();
+                        if (!MQTTpassword || MQTTpassword == "") {
+                            MQTTpassword.clear();
+                        }
+                        doc["mqtt_password_set"] = (MQTTpassword != "");
+                    }
+                    write_settings();
+                }
+            }
+    #endif
+    
+    #if ENABLE_OCPP
+            if(request->hasParam("ocpp_update")) {
+                if (request->getParam("ocpp_update")->value().toInt() == 1) {
+    
+                    if(request->hasParam("ocpp_mode")) {
+                        OcppMode = request->getParam("ocpp_mode")->value().toInt();
+                        doc["ocpp_mode"] = OcppMode;
+                    }
+    
+                    if(request->hasParam("ocpp_backend_url")) {
+                        if (OcppWsClient) {
+                            OcppWsClient->setBackendUrl(request->getParam("ocpp_backend_url")->value().c_str());
+                            doc["ocpp_backend_url"] = OcppWsClient->getBackendUrl();
+                        } else {
+                            doc["ocpp_backend_url"] = "Can only update when OCPP enabled";
+                        }
+                    }
+    
+                    if(request->hasParam("ocpp_cb_id")) {
+                        if (OcppWsClient) {
+                            OcppWsClient->setChargeBoxId(request->getParam("ocpp_cb_id")->value().c_str());
+                            doc["ocpp_cb_id"] = OcppWsClient->getChargeBoxId();
+                        } else {
+                            doc["ocpp_cb_id"] = "Can only update when OCPP enabled";
+                        }
+                    }
+    
+                    if(request->hasParam("ocpp_auth_key")) {
+                        if (OcppWsClient) {
+                            OcppWsClient->setAuthKey(request->getParam("ocpp_auth_key")->value().c_str());
+                            doc["ocpp_auth_key"] = OcppWsClient->getAuthKey();
+                        } else {
+                            doc["ocpp_auth_key"] = "Can only update when OCPP enabled";
+                        }
+                    }
+    
+                    if(request->hasParam("ocpp_auto_auth")) {
+                        auto freevendMode = MicroOcpp::getConfigurationPublic(MO_CONFIG_EXT_PREFIX "FreeVendActive");
+                        if (freevendMode) {
+                            freevendMode->setBool(request->getParam("ocpp_auto_auth")->value().toInt());
+                            doc["ocpp_auto_auth"] = freevendMode->getBool() ? 1 : 0;
+                        } else {
+                            doc["ocpp_auto_auth"] = "Can only update when OCPP enabled";
+                        }
+                    }
+    
+                    if(request->hasParam("ocpp_auto_auth_idtag")) {
+                        auto freevendIdTag = MicroOcpp::getConfigurationPublic(MO_CONFIG_EXT_PREFIX "FreeVendIdTag");
+                        if (freevendIdTag) {
+                            freevendIdTag->setString(request->getParam("ocpp_auto_auth_idtag")->value().c_str());
+                            doc["ocpp_auto_auth_idtag"] = freevendIdTag->getString();
+                        } else {
+                            doc["ocpp_auto_auth_idtag"] = "Can only update when OCPP enabled";
+                        }
+                    }
+    
+                    // Apply changes in OcppWsClient
+                    if (OcppWsClient) {
+                        OcppWsClient->reloadConfigs();
+                    }
+                    MicroOcpp::configuration_save();
+                    write_settings();
+                }
+            }
+    #endif //ENABLE_OCPP
+    
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
+          } else {
+            mg_http_reply(c, 404, "", "Not Found\n");
+          }
+        } else if (mg_http_match_uri(hm, "/currents") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+            DynamicJsonDocument doc(200);
+    
+            if(request->hasParam("battery_current")) {
+                if (LoadBl < 2) {
+                    homeBatteryCurrent = request->getParam("battery_current")->value().toInt();
+                    homeBatteryLastUpdate = time(NULL);
+                    doc["battery_current"] = homeBatteryCurrent;
+                } else
+                    doc["battery_current"] = "not allowed on slave";
+            }
+    
+            if(MainsMeter.Type == EM_API) {
+                if(request->hasParam("L1") && request->hasParam("L2") && request->hasParam("L3")) {
+                    if (LoadBl < 2) {
+                        MainsMeter.Irms[0] = request->getParam("L1")->value().toInt();
+                        MainsMeter.Irms[1] = request->getParam("L2")->value().toInt();
+                        MainsMeter.Irms[2] = request->getParam("L3")->value().toInt();
+    
+                        CalcIsum();
+                        for (int x = 0; x < 3; x++) {
+                            doc["original"]["L" + x] = IrmsOriginal[x];
+                            doc["L" + x] = MainsMeter.Irms[x];
+                        }
+                        doc["TOTAL"] = Isum;
+    
+                        MainsMeter.Timeout = COMM_TIMEOUT;
+    
+                    } else
+                        doc["TOTAL"] = "not allowed on slave";
+                }
+            }
+    
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
+    
+        } else if (mg_http_match_uri(hm, "/ev_meter") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+            DynamicJsonDocument doc(200);
+    
+            if(EVMeter.Type == EM_API) {
+                if(request->hasParam("L1") && request->hasParam("L2") && request->hasParam("L3")) {
+    
+                    EVMeter.Irms[0] = request->getParam("L1")->value().toInt();
+                    EVMeter.Irms[1] = request->getParam("L2")->value().toInt();
+                    EVMeter.Irms[2] = request->getParam("L3")->value().toInt();
+                    EVMeter.CalcImeasured();
+                    EVMeter.Timeout = COMM_EVTIMEOUT;
+                    for (int x = 0; x < 3; x++)
+                        doc["ev_meter"]["currents"]["L" + x] = EVMeter.Irms[x];
+                    doc["ev_meter"]["currents"]["TOTAL"] = EVMeter.Irms[0] + EVMeter.Irms[1] + EVMeter.Irms[2];
+                }
+    
+                if(request->hasParam("import_active_energy") && request->hasParam("export_active_energy") && request->hasParam("import_active_power")) {
+    
+                    EVMeter.Import_active_energy = request->getParam("import_active_energy")->value().toInt();
+                    EVMeter.Export_active_energy = request->getParam("export_active_energy")->value().toInt();
+    
+                    EVMeter.PowerMeasured = request->getParam("import_active_power")->value().toInt();
+                    EVMeter.UpdateEnergies();
+                    doc["ev_meter"]["import_active_power"] = EVMeter.PowerMeasured;
+                    doc["ev_meter"]["import_active_energy"] = EVMeter.Import_active_energy;
+                    doc["ev_meter"]["export_active_energy"] = EVMeter.Export_active_energy;
+                    doc["ev_meter"]["total_kwh"] = EVMeter.Energy;
+                    doc["ev_meter"]["charged_kwh"] = EVMeter.EnergyCharged;
+                }
+            }
+    
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
+    
+    */    } else if (mg_http_match_uri(hm, "/reboot") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+            DynamicJsonDocument doc(20);
+    
+            ESP.restart();
+            doc["reboot"] = true;
+    
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
+    /*
+    #if MODEM
+        } else if (mg_http_match_uri(hm, "/ev_state") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+            DynamicJsonDocument doc(200);
+    
+            //State of charge posting
+            int current_soc = request->getParam("current_soc")->value().toInt();
+            int full_soc = request->getParam("full_soc")->value().toInt();
+    
+            // Energy requested by car
+            int energy_request = request->getParam("energy_request")->value().toInt();
+    
+            // Total energy capacity of car's battery
+            int energy_capacity = request->getParam("energy_capacity")->value().toInt();
+    
+            // Update EVCCID of car
+            if (request->hasParam("evccid")) {
+                if (request->getParam("evccid")->value().length() <= 32) {
+                    strncpy(EVCCID, request->getParam("evccid")->value().c_str(), sizeof(EVCCID));
+                    doc["evccid"] = EVCCID;
+                }
+            }
+    
+            if (full_soc >= FullSoC) // Only update if we received it, since sometimes it's there, sometimes it's not
+                FullSoC = full_soc;
+    
+            if (energy_capacity >= EnergyCapacity) // Only update if we received it, since sometimes it's there, sometimes it's not
+                EnergyCapacity = energy_capacity;
+    
+            if (energy_request >= EnergyRequest) // Only update if we received it, since sometimes it's there, sometimes it's not
+                EnergyRequest = energy_request;
+    
+            if (current_soc >= 0 && current_soc <= 100) {
+                // We set the InitialSoC for our own calculations
+                InitialSoC = current_soc;
+    
+                // We also set the ComputedSoC to allow for app integrations
+                ComputedSoC = current_soc;
+    
+                // Skip waiting, charge since we have what we've got
+                if (State == STATE_MODEM_REQUEST || State == STATE_MODEM_WAIT || State == STATE_MODEM_DONE){
+                    _LOG_A("Received SoC via REST. Shortcut to State Modem Done\n");
+                    setState(STATE_MODEM_DONE); // Go to State B, which means in this case setting PWM
+                }
+            }
+    
+            RecomputeSoC();
+    
+            doc["current_soc"] = current_soc;
+            doc["full_soc"] = full_soc;
+            doc["energy_capacity"] = energy_capacity;
+            doc["energy_request"] = energy_request;
+    
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
+    #endif
+    
+    #if FAKE_RFID
+        //this can be activated by: http://smartevse-xxx.lan/debug?showrfid=1
+        } else if (mg_http_match_uri(hm, "/debug") && !memcmp("GET", hm->method.buf, hm->method.len)) {
+            if(request->hasParam("showrfid")) {
+                Show_RFID = strtol(request->getParam("showrfid")->value().c_str(),NULL,0);
+            }
+            _LOG_A("DEBUG: Show_RFID=%u.\n",Show_RFID);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", ""); //json request needs json response
+    #endif
+    
+    #if AUTOMATED_TESTING
+        //this can be activated by: http://smartevse-xxx.lan/automated_testing?current_max=100
+        //WARNING: because of automated testing, no limitations here!
+        //THAT IS DANGEROUS WHEN USED IN PRODUCTION ENVIRONMENT
+        //FOR SMARTEVSE's IN A TESTING BENCH ONLY!!!!
+        } else if (mg_http_match_uri(hm, "/automated_testing") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+            if(request->hasParam("current_max")) {
+                MaxCurrent = strtol(request->getParam("current_max")->value().c_str(),NULL,0);
+            }
+            if(request->hasParam("current_main")) {
+                MaxMains = strtol(request->getParam("current_main")->value().c_str(),NULL,0);
+            }
+            if(request->hasParam("current_max_circuit")) {
+                MaxCircuit = strtol(request->getParam("current_max_circuit")->value().c_str(),NULL,0);
+            }
+            if(request->hasParam("mainsmeter")) {
+                MainsMeter.Type = strtol(request->getParam("mainsmeter")->value().c_str(),NULL,0);
+            }
+            if(request->hasParam("evmeter")) {
+                EVMeter.Type = strtol(request->getParam("evmeter")->value().c_str(),NULL,0);
+            }
+            if(request->hasParam("config")) {
+                Config = strtol(request->getParam("config")->value().c_str(),NULL,0);
+                setState(STATE_A);                                                  // so the new value will actually be read
+            }
+            if(request->hasParam("loadbl")) {
+                int LBL = strtol(request->getParam("loadbl")->value().c_str(),NULL,0);
+                ConfigureModbusMode(LBL);
+                LoadBl = LBL;
+            }
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", ""); //json request needs json response
+    #endif
+    */    } else {                                                                    // if everything else fails, serve static page
+            struct mg_http_serve_opts opts = {.root_dir = "/data", .ssi_pattern = NULL, .extra_headers = NULL, .mime_types = NULL, .page404 = NULL, .fs = &mg_fs_packed };
+            //opts.fs = NULL;
+            mg_http_serve_dir(c, hm, &opts);
         }
-
-        RecomputeSoC();
-
-        doc["current_soc"] = current_soc;
-        doc["full_soc"] = full_soc;
-        doc["energy_capacity"] = energy_capacity;
-        doc["energy_request"] = energy_request;
-
-        String json;
-        serializeJson(doc, json);
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
-#endif
-
-#if FAKE_RFID
-    //this can be activated by: http://smartevse-xxx.lan/debug?showrfid=1
-    } else if (mg_http_match_uri(hm, "/debug") && !memcmp("GET", hm->method.buf, hm->method.len)) {
-        if(request->hasParam("showrfid")) {
-            Show_RFID = strtol(request->getParam("showrfid")->value().c_str(),NULL,0);
-        }
-        _LOG_A("DEBUG: Show_RFID=%u.\n",Show_RFID);
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", ""); //json request needs json response
-#endif
-
-#if AUTOMATED_TESTING
-    //this can be activated by: http://smartevse-xxx.lan/automated_testing?current_max=100
-    //WARNING: because of automated testing, no limitations here!
-    //THAT IS DANGEROUS WHEN USED IN PRODUCTION ENVIRONMENT
-    //FOR SMARTEVSE's IN A TESTING BENCH ONLY!!!!
-    } else if (mg_http_match_uri(hm, "/automated_testing") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-        if(request->hasParam("current_max")) {
-            MaxCurrent = strtol(request->getParam("current_max")->value().c_str(),NULL,0);
-        }
-        if(request->hasParam("current_main")) {
-            MaxMains = strtol(request->getParam("current_main")->value().c_str(),NULL,0);
-        }
-        if(request->hasParam("current_max_circuit")) {
-            MaxCircuit = strtol(request->getParam("current_max_circuit")->value().c_str(),NULL,0);
-        }
-        if(request->hasParam("mainsmeter")) {
-            MainsMeter.Type = strtol(request->getParam("mainsmeter")->value().c_str(),NULL,0);
-        }
-        if(request->hasParam("evmeter")) {
-            EVMeter.Type = strtol(request->getParam("evmeter")->value().c_str(),NULL,0);
-        }
-        if(request->hasParam("config")) {
-            Config = strtol(request->getParam("config")->value().c_str(),NULL,0);
-            setState(STATE_A);                                                  // so the new value will actually be read
-        }
-        if(request->hasParam("loadbl")) {
-            int LBL = strtol(request->getParam("loadbl")->value().c_str(),NULL,0);
-            ConfigureModbusMode(LBL);
-            LoadBl = LBL;
-        }
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", ""); //json request needs json response
-#endif
-*/    } else {                                                                    // if everything else fails, serve static page
-        struct mg_http_serve_opts opts = {.root_dir = "/data", .ssi_pattern = NULL, .extra_headers = NULL, .mime_types = NULL, .page404 = NULL, .fs = &mg_fs_packed };
-        //opts.fs = NULL;
-        mg_http_serve_dir(c, hm, &opts);
-    }
+    } // handle_URI
     delete request;
-  }
+  } //HTTP request received
 }
 
 void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {

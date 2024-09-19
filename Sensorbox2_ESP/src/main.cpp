@@ -998,6 +998,11 @@ void setup() {
 }
 
 
+// handles URI, returns true if handled, false if not
+bool handle_URI(struct mg_http_message *hm) {
+}
+
+
 //
 // This code will run forever
 //
