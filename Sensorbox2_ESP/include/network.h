@@ -37,6 +37,9 @@
 #include <MicroOcpp/Model/ConnectorBase/Notification.h>
 #endif
 
+#include "mongoose.h"
+#include <ArduinoJson.h>
+
 extern void WiFiSetup(void);
 
 #if DBG == 0

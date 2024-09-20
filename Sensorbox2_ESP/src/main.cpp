@@ -53,8 +53,8 @@
 
 #include <SPIFFS.h>
 
-#include "network.h"
 #include <WiFi.h>
+#include "network.h"
 //#include <AsyncTCP.h>
 #include <Update.h>
 
@@ -100,15 +100,18 @@ uint16_t ModbusData[50];    // 50 registers
 extern uint8_t WIFImode;
 String APpassword = "00000000";
 // end of data that will be stored in 'preferences'
+uint32_t serialnr;
 
 unsigned long ModbusTimer=0;
 unsigned char dataready=0, CTcount, DSMRver, IrmsMode = 0;
 unsigned char LedCnt, LedState, LedSeq[3] = {0,0,0};
 float Irms[3], Volts[3], IrmsCT[3];                                           // float is 32 bits
+float MainsMeterIrms[3], EVMeterIrms[3];                                         // float is 32 bits
 uint8_t datamemory = 0;
 unsigned char led = 0, Wire = WIRES4 + CW;
 uint16_t blinkram = 0, P1taskram = 0;
 extern bool LocalTimeSet;
+int phasesLastUpdate = 0;
 
 // ------------------------------------------------ Settings -----------------------------------------------------
 // 
@@ -613,6 +616,10 @@ void P1Task(void * parameter) {
       // Smart meter measurement?
       if (datamemory & 0x80 ) {
         snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f",Irms[0], Irms[1], Irms[2]);
+        for (int x = 0; x < 3; x++)
+            MainsMeterIrms[x] = Irms[x];
+        phasesLastUpdate = time(NULL);
+
         ///ws.textAll(buffer);
         snprintf(buffer, sizeof(buffer), "V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
         ///ws.textAll(buffer);
@@ -622,8 +629,15 @@ void P1Task(void * parameter) {
       // CT measurement  
       } else if (datamemory & 0x03) { 
         snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f", IrmsCT[0], IrmsCT[1], IrmsCT[2]);
+        for (int x = 0; x < 3; x++)
+            MainsMeterIrms[x] = Irms[x];
+        phasesLastUpdate = time(NULL);
         ///ws.textAll(buffer);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",IrmsCT[0],IrmsCT[1],IrmsCT[2]);
+      }
+      else {
+        for (int x = 0; x < 3; x++)
+            MainsMeterIrms[x] = 0;                                              // better send 0 data then incorrect data?
       }
 
       datamemory = 0;
@@ -982,7 +996,7 @@ void setup() {
   // Unused for now.
   if (preferences.begin("KeyStorage", true) == true) {        // readonly
     uint16_t hwversion = preferences.getUShort("hwversion");   // 0x020A (02 = Sensorbox-2 0A = hwver 1.10)
-    uint32_t serialnr = preferences.getUInt("serialnr");      
+    serialnr = preferences.getUInt("serialnr");
     String ec_private = preferences.getString("ec_private");
     String ec_public = preferences.getString("ec_public");
     preferences.end(); 
@@ -996,10 +1010,111 @@ void setup() {
 }
 
 
-// handles URI, returns true if handled, false if not
-bool handle_URI(struct mg_http_message *hm) {
-}
+//make mongoose 7.14 compatible with 7.13
+#define mg_http_match_uri(X,Y) mg_match(X->uri, mg_str(Y), NULL)
 
+// handles URI, returns true if handled, false if not
+bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
+//    if (mg_match(hm->uri, mg_str("/settings"), NULL)) {               // REST API call?
+    if (mg_http_match_uri(hm, "/settings")) {                            // REST API call?
+          if (!memcmp("GET", hm->method.buf, hm->method.len)) {                     // if GET
+/*            String mode = "N/A";
+            int modeId = -1;
+            if(Access_bit == 0)  {
+                mode = "OFF";
+                modeId=0;
+            } else {
+                switch(Mode) {
+                    case MODE_NORMAL: mode = "NORMAL"; modeId=1; break;
+                    case MODE_SOLAR: mode = "SOLAR"; modeId=2; break;
+                    case MODE_SMART: mode = "SMART"; modeId=3; break;
+                }
+            }
+            String backlight = "N/A";
+            switch(BacklightSet) {
+                case 0: backlight = "OFF"; break;
+                case 1: backlight = "ON"; break;
+                case 2: backlight = "DIMMED"; break;
+            }
+            String evstate = StrStateNameWeb[State];
+            String error = getErrorNameWeb(ErrorFlags);
+            int errorId = getErrorId(ErrorFlags);
+
+            if (ErrorFlags & NO_SUN) {
+                evstate += " - " + error;
+                error = "None";
+                errorId = 0;
+            }
+
+            boolean evConnected = pilot != PILOT_12V;                    //when access bit = 1, p.ex. in OFF mode, the STATEs are no longer updated
+*/
+            DynamicJsonDocument doc(1600); // https://arduinojson.org/v6/assistant/
+            doc["version"] = String(SENSORBOX_SWVER);
+            doc["serialnr"] = serialnr;
+
+            if(WiFi.isConnected()) {
+                switch(WiFi.status()) {
+                    case WL_NO_SHIELD:          doc["wifi"]["status"] = "WL_NO_SHIELD"; break;
+                    case WL_IDLE_STATUS:        doc["wifi"]["status"] = "WL_IDLE_STATUS"; break;
+                    case WL_NO_SSID_AVAIL:      doc["wifi"]["status"] = "WL_NO_SSID_AVAIL"; break;
+                    case WL_SCAN_COMPLETED:     doc["wifi"]["status"] = "WL_SCAN_COMPLETED"; break;
+                    case WL_CONNECTED:          doc["wifi"]["status"] = "WL_CONNECTED"; break;
+                    case WL_CONNECT_FAILED:     doc["wifi"]["status"] = "WL_CONNECT_FAILED"; break;
+                    case WL_CONNECTION_LOST:    doc["wifi"]["status"] = "WL_CONNECTION_LOST"; break;
+                    case WL_DISCONNECTED:       doc["wifi"]["status"] = "WL_DISCONNECTED"; break;
+                    default:                    doc["wifi"]["status"] = "UNKNOWN"; break;
+                }
+
+                doc["wifi"]["ssid"] = WiFi.SSID();
+                doc["wifi"]["rssi"] = WiFi.RSSI();
+                doc["wifi"]["bssid"] = WiFi.BSSIDstr();
+            }
+
+    #if MQTT
+            doc["mqtt"]["host"] = MQTTHost;
+            doc["mqtt"]["port"] = MQTTPort;
+            doc["mqtt"]["topic_prefix"] = MQTTprefix;
+            doc["mqtt"]["username"] = MQTTuser;
+            doc["mqtt"]["password_set"] = MQTTpassword != "";
+
+            if (MQTTclient.connected) {
+                doc["mqtt"]["status"] = "Connected";
+            } else {
+                doc["mqtt"]["status"] = "Disconnected";
+            }
+    #endif
+  /*
+            doc["ev_meter"]["description"] = EMConfig[EVMeter.Type].Desc;
+            doc["ev_meter"]["address"] = EVMeter.Address;
+            doc["ev_meter"]["import_active_power"] = round((float)EVMeter.PowerMeasured / 100)/10; //in kW, precision 1 decimal
+            doc["ev_meter"]["total_kwh"] = round((float)EVMeter.Energy / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["charged_kwh"] = round((float)EVMeter.EnergyCharged / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["currents"]["TOTAL"] = EVMeter.Irms[0] + EVMeter.Irms[1] + EVMeter.Irms[2];
+            doc["ev_meter"]["currents"]["L1"] = EVMeter.Irms[0];
+            doc["ev_meter"]["currents"]["L2"] = EVMeter.Irms[1];
+            doc["ev_meter"]["currents"]["L3"] = EVMeter.Irms[2];
+            doc["ev_meter"]["import_active_energy"] = round((float)EVMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["export_active_energy"] = round((float)EVMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
+
+            doc["mains_meter"]["import_active_energy"] = round((float)MainsMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
+            doc["mains_meter"]["export_active_energy"] = round((float)MainsMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
+   */
+            doc["phase_currents"]["TOTAL"] = MainsMeterIrms[0] + MainsMeterIrms[1] + MainsMeterIrms[2];
+            doc["phase_currents"]["L1"] = MainsMeterIrms[0];
+            doc["phase_currents"]["L2"] = MainsMeterIrms[1];
+            doc["phase_currents"]["L3"] = MainsMeterIrms[2];
+            doc["phase_currents"]["last_data_update"] = phasesLastUpdate;
+
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
+          } else {
+            mg_http_reply(c, 404, "", "Not Found\n");
+          }
+          return true;
+    }
+    return false;
+}
 
 //
 // This code will run forever
