@@ -168,26 +168,6 @@
             $('#current_max').text(data.settings.current_max.toFixed(1) + " A");
             $('#override_current').text((data.settings.override_current/10).toFixed(1) + " A");
             $('#enable_C2').text(data.settings.enable_C2);
-            if (data.settings.starttime) {
-                $('#starttime_date').text(new Date(data.settings.starttime * 1000).toLocaleDateString());
-                $('#starttime_time').text(new Date(data.settings.starttime * 1000).toLocaleTimeString());
-            } else {
-                $('#starttime_date').text("none");
-                $('#starttime_time').text("");
-            }
-            if (data.settings.stoptime) {
-                $('#stoptime_date').text(new Date(data.settings.stoptime * 1000).toLocaleDateString());
-                $('#stoptime_time').text(new Date(data.settings.stoptime * 1000).toLocaleTimeString());
-            } else {
-                $('#stoptime_date').text("none");
-                $('#stoptime_time').text("");
-            }
-            if (data.settings.repeat == 1) {
-                $('#repeat').text("Daily");
-            }
-            else {
-                $('#repeat').text("none");
-            }
             $('#battery_current').text((data.home_battery.current/10).toFixed(1) + "A");
             $('#battery_last_update_time').text(new Date(data.home_battery.last_update * 1000).toLocaleTimeString());
             $('#battery_last_update_date').text(new Date(data.home_battery.last_update * 1000).toLocaleDateString());
@@ -416,36 +396,6 @@
                                             </div>
                                             <div class="col">
                                               <div class="h5 mb-0 mr-3 text-gray-800" id="enable_C2"></div>
-                                            </div>
-                                        </div>
-                                        <div class="row no-gutters align-items-center">
-                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
-                                              StartTime:
-                                            </div>
-                                            <div class="col">
-                                              <div class="h5 mb-0 mr-3 text-gray-800" id="starttime_date"></div>
-                                            </div>
-                                            <div class="col">
-                                              <div class="h5 mb-0 mr-3 text-gray-800" id="starttime_time"></div>
-                                            </div>
-                                        </div>
-                                        <div class="row no-gutters align-items-center">
-                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
-                                              StopTime:
-                                            </div>
-                                            <div class="col">
-                                              <div class="h5 mb-0 mr-3 text-gray-800" id="stoptime_date"></div>
-                                            </div>
-                                            <div class="col">
-                                              <div class="h5 mb-0 mr-3 text-gray-800" id="stoptime_time"></div>
-                                            </div>
-                                        </div>
-                                        <div class="row no-gutters align-items-center">
-                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
-                                              Repeat:
-                                            </div>
-                                            <div class="col">
-                                              <div class="h5 mb-0 mr-3 text-gray-800" id="repeat"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -746,15 +696,6 @@
 
                 <script>
                     function activate(mode) {
-                      var starttime = document.querySelector('input[name="starttime"]').value;
-                      var stoptime = document.querySelector('input[name="stoptime"]').value;
-                      var repeat2 = +document.getElementById('daily_repeat').checked;
-                      if (mode == 1 || mode == 2 || mode == 3) {
-                        override_current=$('#mode_override_current').val();
-                        $.post( "/settings?mode=" + mode +  "&override_current=" + (override_current * 10) + "&starttime=" + starttime + "&stoptime=" + stoptime + "&repeat=" + repeat2);
-                      } else {
-                        $.post( "/settings?mode=" + mode  + "&starttime=" + starttime + "&stoptime=" + stoptime + "&repeat=" + repeat2);
-                      }
                       event.preventDefault();
                     }
                     function toggleMqttEdit() {
@@ -902,27 +843,5 @@
         </div>
       </div>
   </div>
-  <script>
-    // Get the current date and time
-    var now = new Date();
-    $('[id=stoptime_group]').hide();
-    $('[id=daily_repeat_group]').hide();
-
-    // Format the date and time as a string that can be used as the value of the input field
-    var dateString = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
-    var timeString = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
-    var dateTimeString = dateString + 'T' + timeString;
-
-    // Set the value of the input field to the current date and time
-    document.getElementById('starttime').value = dateTimeString;
-    document.getElementById('stoptime').value = dateTimeString;
-    document.getElementById('starttime').onchange = function () {
-        $('[id=stoptime_group]').show();
-    }
-    document.getElementById('stoptime').onchange = function () {
-        $('[id=daily_repeat_group]').show();
-    }
-    $('daily_repeat').prop('checked', false);
-  </script>
 </body>
 </html>
