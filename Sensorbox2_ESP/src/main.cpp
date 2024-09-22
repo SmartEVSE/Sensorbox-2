@@ -1079,6 +1079,12 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
             doc["ev_meter"]["currents"]["L1"] = 0;
             doc["ev_meter"]["currents"]["L2"] = 0;
             doc["ev_meter"]["currents"]["L3"] = 0;
+            //TODO remove this stuff:
+            doc["phase_currents"]["original_data"]["TOTAL"] = 0;
+            doc["phase_currents"]["original_data"]["L1"] = 0;
+            doc["phase_currents"]["original_data"]["L2"] = 0;
+            doc["phase_currents"]["original_data"]["L3"] = 0;
+
 
 
     #if MQTT
