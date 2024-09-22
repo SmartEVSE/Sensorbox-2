@@ -40,36 +40,6 @@
               sessionStorage.setItem("version",JSON.stringify(data.version));
               $('#serialnr').append(data.serialnr);
             }
-            for(let x=0; x<=3; x++) {
-              if(x == data.mode_id) {
-                $('#mode_' + x).css("background-color", "#1CC88A");
-              } else {
-                $('#mode_' + x).css("background-color", "#EDEDED");
-              }
-            }
-            $('#mode_' + data.mode_id).css("background-color", "#1CC88A");
-
-            $('#mode').text(data.mode);
-            $('#dutycycle').text((data.evse.pwm*100/1024).toFixed(0) + " %");
-
-            if (data.ev_state) {
-              let full_soc = data.ev_state.full_soc;
-              let initial_soc = data.ev_state.initial_soc;
-              let computed_soc = data.ev_state.computed_soc;
-              let time_until_full = data.ev_state.time_until_full;
-              let energy_capacity = data.ev_state.energy_capacity;
-              let energy_request = data.ev_state.energy_request;
-              let evccid = data.ev_state.evccid;
-
-              $('#computed_soc').html(computed_soc >= 0 ? computed_soc + " &#37;" : "N/A");
-              $('#full_soc').html(full_soc >= 0 ? full_soc + " &#37;" : "N/A");
-              $('#initial_soc').html(initial_soc >= 0 ? initial_soc + " &#37;" : "N/A");
-              $('#energy_capacity').html(energy_capacity >= 0 ? energy_capacity.toFixed(1) + " kWh" : "N/A");
-              $('#evccid').html(evccid || "N/A");
-              $('#full_at')
-                .text(time_until_full > 0 ? new Date(+Date.now()+(time_until_full * 1000)).toLocaleString(undefined, { timeStyle: 'short', dateStyle: "short" }) : 'N/A')
-                .attr('title', (time_until_full > 0 ? Math.round(time_until_full / 60) + ' min to go' : 'N/A'));
-            }
 
             if (data.mqtt) {
               $('#mqtt').text((data.mqtt.status) || 'N/A').show();
