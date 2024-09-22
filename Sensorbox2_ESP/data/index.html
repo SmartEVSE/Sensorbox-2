@@ -83,18 +83,6 @@
               $('[id=with_p1_api_data_time]').hide();
             }
 
-            if(data.home_battery.last_update == 0) {
-              $('[id=with_homebattery]').hide();
-            } else {
-              $('[id=with_homebattery]').show();
-            }
-
-            if(data.home_battery.current == 0) {
-              $('#battery_status').text("Idle");
-            } else {
-              $('#battery_status').text(data.home_battery.current < 0 ? "Discharging" : "Charging");
-            }
-
             if(data.settings.mains_meter == "Disabled") {
               $('[id=with_mainsmeter]').hide();
             } else {
