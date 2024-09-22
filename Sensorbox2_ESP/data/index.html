@@ -39,25 +39,6 @@
               $('#version').append(data.version);
               sessionStorage.setItem("version",JSON.stringify(data.version));
               $('#serialnr').append(data.serialnr);
-
-              let minCurrent=parseInt(data.settings.current_min.toFixed(1));
-              let maxCurrent=parseInt(data.settings.current_max.toFixed(1));
-
-              // Initialize at page load
-              // value 0 = no override
-              if(data.evse.loadbl < 2) {
-                $('#mode_override_current').append($('<option>', {
-                    value: 0,
-                    text: 'no override'
-                }));
-                for(let x = minCurrent ; x <= maxCurrent ; x++) {
-                  $('#mode_override_current').append($('<option>', {
-                      value: x,
-                      text: x + 'A'
-                  }));
-                }
-              }
-              $('#required_evccid').val(data.settings.required_evccid || "");
             }
             for(let x=0; x<=3; x++) {
               if(x == data.mode_id) {
