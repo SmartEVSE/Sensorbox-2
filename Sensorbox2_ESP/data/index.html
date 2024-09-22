@@ -68,11 +68,6 @@
             $('#evmeter_currents_3').text((data.ev_meter.currents.L3/10).toFixed(1) + " A");
             $('#charge_current').text((data.settings.charge_current/10).toFixed(1) + " A");
 
-            $('#phase_original_total').text((data.phase_currents.original_data.TOTAL/10).toFixed(1) + " A");
-            $('#phase_original_1').text((data.phase_currents.original_data.L1/10).toFixed(1) + " A");
-            $('#phase_original_2').text((data.phase_currents.original_data.L2/10).toFixed(1) + " A");
-            $('#phase_original_3').text((data.phase_currents.original_data.L3/10).toFixed(1) + " A");
-
             if(data.phase_currents.last_data_update > 0) {
               $('#p1_data_time').text(new Date(data.phase_currents.last_data_update * 1000).toLocaleTimeString());
               $('#p1_data_date').text(new Date(data.phase_currents.last_data_update * 1000).toLocaleDateString());
@@ -358,58 +353,6 @@
                     </div>
                 </div>
 
-                <div class="col-xl-4 col-md-6 mb-4" id="with_homebattery">
-                  <div class="card border-left-success shadow h-100 py-2">
-                      <div class="card-body">
-                          <div class="row no-gutters align-items-center">
-                              <div class="col mr-2">
-                                  <div class="text-xl font-weight-bold text-info text-uppercase mb-1">Phase Details (Original)</div>
-                                  <div class="row no-gutters align-items-center">
-                                    <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
-                                        Total:
-                                      </div>
-                                      <div class="col">
-                                        <div class="h5 mb-0 mr-3 text-gray-800" id="phase_original_total" style="text-align: right;"></div>
-                                      </div>
-                                  </div>
-                                  <div class="row no-gutters align-items-center">
-                                    <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
-                                        L1:
-                                      </div>
-                                      <div class="col">
-                                        <div class="h5 mb-0 mr-3 text-gray-800" id="phase_original_1" style="text-align: right;"></div>
-                                      </div>
-                                  </div>
-                                  <div class="row no-gutters align-items-center">
-                                    <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
-                                        L2:
-                                      </div>
-                                      <div class="col">
-                                        <div class="h5 mb-0 mr-3 text-gray-800" id="phase_original_2" style="text-align: right;"></div>
-                                      </div>
-                                  </div>
-                                  <div class="row no-gutters align-items-center">
-                                    <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
-                                        L3:
-                                      </div>
-                                      <div class="col">
-                                        <div class="h5 mb-0 mr-3 text-gray-800" id="phase_original_3" style="text-align: right;"></div>
-                                      </div>
-                                  </div>
-                              </div>
-                              <div class="col-auto">
-                                  <i class="fas fa-clipboard-list fa-2x text-gray-300">
-                                    <svg style="width:48px;height:48px" viewBox="0 0 24 24">
-                                      <path fill="currentColor" d="M16.5,21C13.5,21 12.31,16.76 11.05,12.28C10.14,9.04 9,5 7.5,5C4.11,5 4,11.93 4,12H2C2,11.63 2.06,3 7.5,3C10.5,3 11.71,7.25 12.97,11.74C13.83,14.8 15,19 16.5,19C19.94,19 20.03,12.07 20.03,12H22.03C22.03,12.37 21.97,21 16.5,21Z" />
-                                  </svg>
-                                  </i>
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-
-              </div>
-
 
               <div class="col-xl-4 col-md-6 mb-4" id="with_evmeter" style="display: none;">
                 <div class="card border-left-warning shadow h-100 py-2">
@@ -514,56 +457,6 @@
                 </div>
               </div>
 
-              <div class="col-xl-4 col-md-6 mb-4" id="with_homebattery" style="display: none;">
-                <div class="card border-left-warning shadow h-100 py-2">
-                    <div class="card-body">
-                        <div class="row no-gutters align-items-center">
-                            <div class="col mr-2">
-                                <div class="text-xl font-weight-bold text-info text-uppercase mb-1">Home Battery</div>
-                                <div class="row no-gutters align-items-center">
-                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
-                                      Status:
-                                    </div>
-                                    <div class="col">
-                                      <div class="h5 mb-0 mr-3 text-gray-800" id="battery_status" style="text-align: right;"></div>
-                                    </div>
-                                </div>
-                                <div class="row no-gutters align-items-center">
-                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
-                                      Current:
-                                    </div>
-                                    <div class="col">
-                                      <div class="h5 mb-0 mr-3 text-gray-800" id="battery_current" style="text-align: right;"></div>
-                                    </div>
-                                </div>
-                                <div class="row no-gutters align-items-center">
-                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
-                                      Date:
-                                    </div>
-                                    <div class="col">
-                                      <div class="h5 mb-0 mr-3 text-gray-800" id="battery_last_update_date" style="text-align: right;"></div>
-                                    </div>
-                                </div>
-                                <div class="row no-gutters align-items-center">
-                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
-                                      Time:
-                                    </div>
-                                    <div class="col">
-                                      <div class="h5 mb-0 mr-3 text-gray-800" id="battery_last_update_time" style="text-align: right;"></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-auto">
-                                <i class="fas fa-clipboard-list fa-2x text-gray-300">
-                                  <svg style="width:48px;height:48px" viewBox="0 0 24 24">
-                                    <path fill="currentColor" d="M16 20H8V6H16M16.67 4H15V2H9V4H7.33C6.6 4 6 4.6 6 5.33V20.67C6 21.4 6.6 22 7.33 22H16.67C17.41 22 18 21.41 18 20.67V5.33C18 4.6 17.4 4 16.67 4M15 16H9V19H15V16M15 7H9V10H15V7M15 11.5H9V14.5H15V11.5Z" />
-                                </svg>
-                                </i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-              </div>
             </div>
             <!-- END ROW -->
               <div class="row">
