@@ -1069,7 +1069,12 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
                 doc["wifi"]["rssi"] = WiFi.RSSI();
                 doc["wifi"]["bssid"] = WiFi.BSSIDstr();
             }
+
+            // stuff to keep compatibility with SmartEVSE
             doc["settings"]["mains_meter"] = "Sensorbox";
+            doc["evse"]["temp"] = 0;
+            //doc["evse"]["temp"] = TempEVSE;
+
 
     #if MQTT
             doc["mqtt"]["host"] = MQTTHost;
