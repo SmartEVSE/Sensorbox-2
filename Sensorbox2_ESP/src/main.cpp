@@ -1119,10 +1119,10 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
             String json;
             serializeJson(doc, json);
             mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
+            return true;
           } else {
             mg_http_reply(c, 404, "", "Not Found\n");
           }
-          return true;
     }
     return false;
 }

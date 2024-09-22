@@ -1257,7 +1257,6 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
                     }
                     doc["mqtt_password_set"] = (MQTTpassword != "");
                 }
-                write_settings();
                 if (preferences.begin("settings", false) ) {
                     preferences.putString("MQTTpassword", MQTTpassword);
                     preferences.putString("MQTTuser", MQTTuser);
@@ -1575,13 +1574,11 @@ void WiFiSetup(void) {
 
         MQTTpassword = preferences.getString("MQTTpassword");
         MQTTuser = preferences.getString("MQTTuser");
-        String temp = String(serialnr);
 #if SENSORBOX_VERSION == 20
-        temp = "Sensorbox/" + temp;
+        MQTTprefix = preferences.getString("MQTTprefix", "Sensorbox/" + String(serialnr));
 #else
-        temp = "SmartEVSE/" + temp;
+        MQTTprefix = preferences.getString("MQTTprefix", "SmartEVSE/" + String(serialnr));
 #endif
-        MQTTprefix = preferences.getString("MQTTprefix", temp);
         MQTTHost = preferences.getString("MQTTHost", "");
         MQTTPort = preferences.getUShort("MQTTPort", 1883);
         preferences.end();
@@ -2040,7 +2037,6 @@ void network_loop() {
     if (millis() - lastCheck_net >= 1000) {
         lastCheck_net = millis();
         //this block is for non-time critical stuff that needs to run approx 1 / second
-_LOG_A("DINGO: MQTTprefix=%s.\n", MQTTprefix.c_str());
         getLocalTime(&timeinfo, 1000U);
         if (!LocalTimeSet && WIFImode == 1) {
             _LOG_A("Time not synced with NTP yet.\n");
