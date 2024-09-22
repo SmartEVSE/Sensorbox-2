@@ -29,7 +29,7 @@
 #include <ArduinoJson.h>
 
 #ifndef MQTT
-#define MQTT 0  // Set to 1 to enable MQTT support in code
+#define MQTT 1  // Uncomment or set to 0 to disable MQTT support in code
 #endif
 
 #if MQTT
