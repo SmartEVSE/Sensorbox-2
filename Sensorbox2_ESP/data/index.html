@@ -50,50 +50,6 @@
               $('#mqtt_config').hide();
             }
 
-            if(data.evse.loadbl > 1) {
-              $('[id=loadbl]').show();
-              $('[id=loadbl_text]').show();
-              $('[id=loadbl_node]').text("Slave Node "+(data.evse.loadbl-1));
-              //$('[id=loadbl_text_slave]').show();
-              //$('[id=loadbl_text_master]').hide();
-              $('[id=loadbl_mode_3_off]').show();
-              $('[id=contactor2]').hide();
-              //$('[id=form_mode] :input').prop('disabled',true);
-              $('[id=mode_2]').show();
-              $('[id=mode_3]').show();
-              //$('[id=mode_override_current]').prop('disabled',true);
-              $('[id=override_current_box]').hide();
-              $('[id=override_current_box2]').hide();
-              $('[id=form_pwm] :input').prop('disabled',true);
-            } else if (data.evse.loadbl == 1) {
-              $('[id=loadbl]').show();
-              $('[id=loadbl_text]').show();
-              $('[id=loadbl_node]').text("Master");
-              //$('[id=loadbl_text_slave]').hide();
-              //$('[id=loadbl_text_master]').show();
-              $('[id=loadbl_mode_3_off]').show();
-              $('[id=contactor2]').hide();
-              //$('[id=form_mode] :input').prop('disabled',false);
-              $('[id=mode_2]').show();
-              $('[id=mode_3]').show();
-              //$('[id=mode_override_current]').prop('disabled',false);
-              $('[id=form_pwm] :input').prop('disabled',false);
-            } else {
-              $('[id=loadbl]').hide();
-              $('[id=loadbl_text]').hide();
-              //$('[id=loadbl_text_slave]').hide();
-              //$('[id=loadbl_text_master]').hide();
-              $('[id=loadbl_mode_3_off]').show();
-              $('[id=contactor2]').show();
-              //$('[id=form_mode] :input').prop('disabled',false);
-              $('[id=mode_2]').show();
-              $('[id=mode_3]').show();
-              //$('[id=mode_override_current]').prop('disabled',false);
-              $('[id=form_pwm] :input').prop('disabled',false);
-            }
-
-            $('#car_connected').text(data.car_connected ? "Yes" : "No");
-            $('#state').text(data.evse.state);
             $('#temp').text(data.evse.temp + " °C / " + data.evse.temp_max + " °C");
             if(data.evse.error != "None") {
               $('#error').text(data.evse.error);
@@ -102,23 +58,6 @@
               $('[id=with_errors]').hide();
             }
 
-            if(data.evse.rfid != "Not Installed") {
-              $('#rfid').text(data.evse.rfid);
-            } else {
-              $('#show_rfid').hide();
-            }
-
-            // if(data.evse.charge_timer > 0) {
-            //   $('#state').append(" (Starting in " + data.evse.charge_timer + "s)");
-            // }
-            if(data.evse.solar_stop_timer > 0) {
-              $('#state').append(" (Stopping in " + data.evse.solar_stop_timer + "s)");
-            }
-
-            $('#current_min').text(data.settings.current_min.toFixed(1) + " A");
-            $('#current_max').text(data.settings.current_max.toFixed(1) + " A");
-            $('#override_current').text((data.settings.override_current/10).toFixed(1) + " A");
-            $('#enable_C2').text(data.settings.enable_C2);
             $('#battery_current').text((data.home_battery.current/10).toFixed(1) + "A");
             $('#battery_last_update_time').text(new Date(data.home_battery.last_update * 1000).toLocaleTimeString());
             $('#battery_last_update_date').text(new Date(data.home_battery.last_update * 1000).toLocaleDateString());
