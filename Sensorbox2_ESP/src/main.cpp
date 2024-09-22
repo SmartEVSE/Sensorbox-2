@@ -1069,6 +1069,7 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
                 doc["wifi"]["rssi"] = WiFi.RSSI();
                 doc["wifi"]["bssid"] = WiFi.BSSIDstr();
             }
+            doc["settings"]["mains_meter"] = "Sensorbox";
 
     #if MQTT
             doc["mqtt"]["host"] = MQTTHost;
