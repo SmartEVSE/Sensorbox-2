@@ -233,135 +233,11 @@ void ProvisionCli() {
 
 #if MQTT
 void mqtt_receive_callback(const String topic, const String payload) {
-    if (topic == MQTTprefix + "/Set/Mode") {
-        if (payload == "Off") {
-            ToModemWaitStateTimer = 0;
-            ToModemDoneStateTimer = 0;
-            LeaveModemDoneStateTimer = 0;
-            setAccess(0);
-        } else if (payload == "Normal") {
-            setMode(MODE_NORMAL);
-        } else if (payload == "Solar") {
-            OverrideCurrent = 0;
-            setMode(MODE_SOLAR);
-        } else if (payload == "Smart") {
-            OverrideCurrent = 0;
-            setMode(MODE_SMART);
-        }
-    } else if (topic == MQTTprefix + "/Set/CurrentOverride") {
-        uint16_t RequestedCurrent = payload.toInt();
-        if (RequestedCurrent == 0) {
-            OverrideCurrent = 0;
-        } else if (LoadBl < 2 && (Mode == MODE_NORMAL || Mode == MODE_SMART)) { // OverrideCurrent not possible on Slave
-            if (RequestedCurrent >= (MinCurrent * 10) && RequestedCurrent <= (MaxCurrent * 10)) {
-                OverrideCurrent = RequestedCurrent;
-            }
-        }
-    } else if (topic == MQTTprefix + "/Set/CurrentMaxSumMains" && LoadBl < 2) {
-        uint16_t RequestedCurrent = payload.toInt();
-        if (RequestedCurrent == 0) {
-            MaxSumMains = 0;
-        } else if (RequestedCurrent == 0 || (RequestedCurrent >= 10 && RequestedCurrent <= 600)) {
-                MaxSumMains = RequestedCurrent;
-        }
-    } else if (topic == MQTTprefix + "/Set/CPPWMOverride") {
-        int pwm = payload.toInt();
-        if (pwm == -1) {
-            SetCPDuty(1024);
-            CP_ON;
-            CPDutyOverride = false;
-        } else if (pwm == 0) {
-            SetCPDuty(0);
-            CP_OFF;
-            CPDutyOverride = true;
-        } else if (pwm <= 1024) {
-            SetCPDuty(pwm);
-            CP_ON;
-            CPDutyOverride = true;
-        }
-    } else if (topic == MQTTprefix + "/Set/MainsMeter") {
-        if (MainsMeter.Type != EM_API || LoadBl >= 2)
-            return;
-
-        int32_t L1, L2, L3;
-        int n = sscanf(payload.c_str(), "%d:%d:%d", &L1, &L2, &L3);
-
-        // MainsMeter can measure -200A to +200A per phase
-        if (n == 3 && (L1 > -2000 && L1 < 2000) && (L2 > -2000 && L2 < 2000) && (L3 > -2000 && L3 < 2000)) {
-            if (LoadBl < 2)
-                MainsMeter.Timeout = COMM_TIMEOUT;
-            MainsMeter.Irms[0] = L1;
-            MainsMeter.Irms[1] = L2;
-            MainsMeter.Irms[2] = L3;
-            CalcIsum();
-        }
-    } else if (topic == MQTTprefix + "/Set/EVMeter") {
-        if (EVMeter.Type != EM_API)
-            return;
-
-        int32_t L1, L2, L3, W, WH;
-        int n = sscanf(payload.c_str(), "%d:%d:%d:%d:%d", &L1, &L2, &L3, &W, &WH);
-
-        // We expect 5 values (and accept -1 for unknown values)
-        if (n == 5) {
-            if ((L1 > -1 && L1 < 1000) && (L2 > -1 && L2 < 1000) && (L3 > -1 && L3 < 1000)) {
-                // RMS currents
-                EVMeter.Irms[0] = L1;
-                EVMeter.Irms[1] = L2;
-                EVMeter.Irms[2] = L3;
-                EVMeter.CalcImeasured();
-                EVMeter.Timeout = COMM_EVTIMEOUT;
-            }
-
-            if (W > -1) {
-                // Power measurement
-                EVMeter.PowerMeasured = W;
-            }
-
-            if (WH > -1) {
-                // Energy measurement
-                EVMeter.Import_active_energy = WH;
-                EVMeter.Export_active_energy = 0;
-                EVMeter.UpdateEnergies();
-            }
-        }
-    } else if (topic == MQTTprefix + "/Set/HomeBatteryCurrent") {
-        if (LoadBl >= 2)
-            return;
-        homeBatteryCurrent = payload.toInt();
-        homeBatteryLastUpdate = time(NULL);
-    } else if (topic == MQTTprefix + "/Set/RequiredEVCCID") {
-        strncpy(RequiredEVCCID, payload.c_str(), sizeof(RequiredEVCCID));
-        if (preferences.begin("settings", false) ) {                        //false = write mode
-            preferences.putString("RequiredEVCCID", String(RequiredEVCCID));
-            preferences.end();
-        }
-    }
-
     // Make sure MQTT updates directly to prevent debounces
     lastMqttUpdate = 10;
 }
 
 //wrapper so MQTTClient::Publish works
-static struct mg_connection *s_conn;              // Client connection
-class MQTTclient_t {
-private:
-    struct mg_mqtt_opts default_opts;
-public:
-    //constructor
-    MQTTclient_t () {
-        memset(&default_opts, 0, sizeof(default_opts));
-        default_opts.qos = 0;
-        default_opts.retain = false;
-    }
-
-    void publish(const String &topic, const int32_t &payload, bool retained, int qos) { publish(topic, String(payload), retained, qos); };
-    void publish(const String &topic, const String &payload, bool retained, int qos);
-    void subscribe(const String &topic, int qos);
-    bool connected;
-    void disconnect(void) { mg_mqtt_disconnect(s_conn, &default_opts); };
-};
-
 void MQTTclient_t::publish(const String &topic, const String &payload, bool retained, int qos) {
   if (s_conn && connected) {
     struct mg_mqtt_opts opts = default_opts;
@@ -423,43 +299,17 @@ void SetupMQTTClient() {
 
     //set the parameters for and announce sensors with device class 'current':
     optional_payload = jsna("device_class","current") + jsna("unit_of_measurement","A") + jsna("value_template", R"({{ value | int / 10 }})");
-    announce("Charge Current", "sensor");
-    announce("Max Current", "sensor");
-    if (MainsMeter.Type) {
+//    if (MainsMeter.Type) {
         announce("Mains Current L1", "sensor");
         announce("Mains Current L2", "sensor");
         announce("Mains Current L3", "sensor");
-    }
-    if (EVMeter.Type) {
+//    }
+/*    if (EVMeter.Type) {
         announce("EV Current L1", "sensor");
         announce("EV Current L2", "sensor");
         announce("EV Current L3", "sensor");
-    }
-    if (homeBatteryLastUpdate) {
-        announce("Home Battery Current", "sensor");
-    }
-
-#if MODEM
-        //set the parameters for modem/SoC sensor entities:
-        optional_payload = jsna("unit_of_measurement","%") + jsna("value_template", R"({{ none if (value | int == -1) else (value | int) }})");
-        announce("EV Initial SoC", "sensor");
-        announce("EV Full SoC", "sensor");
-        announce("EV Computed SoC", "sensor");
-        announce("EV Remaining SoC", "sensor");
-
-        optional_payload = jsna("device_class","duration") + jsna("unit_of_measurement","m") + jsna("value_template", R"({{ none if (value | int == -1) else (value | int / 60) | round }})");
-        announce("EV Time Until Full", "sensor");
-
-        optional_payload = jsna("device_class","energy") + jsna("unit_of_measurement","Wh") + jsna("value_template", R"({{ none if (value | int == -1) else (value | int) }})");
-        announce("EV Energy Capacity", "sensor");
-        announce("EV Energy Request", "sensor");
-
-        optional_payload = jsna("value_template", R"({{ none if (value == '') else value }})");
-        announce("EVCCID", "sensor");
-        optional_payload = jsna("state_topic", String(MQTTprefix + "/RequiredEVCCID")) + jsna("command_topic", String(MQTTprefix + "/Set/RequiredEVCCID"));
-        announce("Required EVCCID", "text");
-#endif
-
+    }*/
+/*
     if (EVMeter.Type) {
         //set the parameters for and announce other sensor entities:
         optional_payload = jsna("device_class","power") + jsna("unit_of_measurement","W");
@@ -469,21 +319,8 @@ void SetupMQTTClient() {
         optional_payload = jsna("device_class","energy") + jsna("unit_of_measurement","Wh") + jsna("state_class","total_increasing");
         announce("EV Total Energy Charged", "sensor");
     }
+*/
 
-    //set the parameters for and announce sensor entities without device_class or unit_of_measurement:
-    optional_payload = "";
-    announce("EV Plug State", "sensor");
-    announce("Access", "sensor");
-    announce("State", "sensor");
-    announce("RFID", "sensor");
-    announce("RFIDLastRead", "sensor");
-#if ENABLE_OCPP
-    announce("OCPP", "sensor");
-    announce("OCPPConnection", "sensor");
-#endif //ENABLE_OCPP
-
-    optional_payload = jsna("device_class","duration") + jsna("unit_of_measurement","s");
-    announce("SolarStopTimer", "sensor");
     //set the parameters for and announce diagnostic sensor entities:
     optional_payload = jsna("entity_category","diagnostic");
     announce("Error", "sensor");
@@ -496,24 +333,6 @@ void SetupMQTTClient() {
     optional_payload = jsna("entity_category","diagnostic") + jsna("device_class","duration") + jsna("unit_of_measurement","s") + jsna("entity_registry_enabled_default","False");
     announce("ESP Uptime", "sensor");
 
-#if MODEM
-        optional_payload = jsna("unit_of_measurement","%") + jsna("value_template", R"({{ (value | int / 1024 * 100) | round(0) }})");
-        announce("CP PWM", "sensor");
-
-        optional_payload = jsna("value_template", R"({{ none if (value | int == -1) else (value | int / 1024 * 100) | round }})");
-        optional_payload += jsna("command_topic", String(MQTTprefix + "/Set/CPPWMOverride")) + jsna("min", "-1") + jsna("max", "100") + jsna("mode","slider");
-        optional_payload += jsna("command_template", R"({{ (value | int * 1024 / 100) | round }})");
-        announce("CP PWM Override", "number");
-#endif
-    //set the parameters for and announce select entities, overriding automatic state_topic:
-    optional_payload = jsna("state_topic", String(MQTTprefix + "/Mode")) + jsna("command_topic", String(MQTTprefix + "/Set/Mode"));
-    optional_payload += String(R"(, "options" : ["Off", "Normal", "Smart", "Solar"])");
-    announce("Mode", "select");
-
-    //set the parameters for and announce number entities:
-    optional_payload = jsna("command_topic", String(MQTTprefix + "/Set/CurrentOverride")) + jsna("min", "0") + jsna("max", MaxCurrent ) + jsna("mode","slider");
-    optional_payload += jsna("value_template", R"({{ value | int / 10 if value | is_number else none }})") + jsna("command_template", R"({{ value | int * 10 }})");
-    announce("Charge Current Override", "number");
 }
 #endif
 /*
@@ -1049,7 +868,7 @@ const String& webServerRequest::value() {
 //end of wrapper
 
 struct mg_str empty = mg_str_n("", 0UL);
-/*
+
 #if MQTT
 char s_mqtt_url[80];
 //TODO perhaps integrate multiple fn callback functions?
@@ -1082,7 +901,7 @@ static void fn_mqtt(struct mg_connection *c, int ev, void *ev_data) {
     } else if (ev == MG_EV_CLOSE) {
         _LOG_V("%lu CLOSED\n", c->id);
         MQTTclient.connected = false;
-        s_conn = NULL;  // Mark that we're closed
+        MQTTclient.s_conn = NULL;  // Mark that we're closed
     }
 }
 
@@ -1107,10 +926,10 @@ static void timer_fn(void *arg) {
     //mqtt[s]://[username][:password]@host.domain[:port]
     snprintf(s_mqtt_url, sizeof(s_mqtt_url), "mqtt://%s:%i", MQTTHost.c_str(), MQTTPort);
 
-    if (s_conn == NULL) s_conn = mg_mqtt_connect(mgr, s_mqtt_url, &opts, fn_mqtt, NULL);
+    if (MQTTclient.s_conn == NULL) MQTTclient.s_conn = mg_mqtt_connect(mgr, s_mqtt_url, &opts, fn_mqtt, NULL);
 }
 #endif
-*/
+
 // Connection event handler function
 // indenting lower level two spaces to stay compatible with old StartWebServer
 // We use the same event handler function for HTTP and HTTPS connections

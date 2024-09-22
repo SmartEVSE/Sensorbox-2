@@ -25,8 +25,43 @@
 
 #define __EVSE_NETWORK
 
+#include "mongoose.h"
+#include <ArduinoJson.h>
+
 #ifndef MQTT
 #define MQTT 0  // Set to 1 to enable MQTT support in code
+#endif
+
+#if MQTT
+// MQTT connection info
+extern String MQTTuser;
+extern String MQTTpassword;
+extern String MQTTprefix;
+extern String MQTTHost;
+extern uint16_t MQTTPort;
+//mg_timer *MQTTtimer;
+extern uint8_t lastMqttUpdate;
+
+class MQTTclient_t {
+private:
+    struct mg_mqtt_opts default_opts;
+public:
+    //constructor
+    MQTTclient_t () {
+        memset(&default_opts, 0, sizeof(default_opts));
+        default_opts.qos = 0;
+        default_opts.retain = false;
+    }
+    void publish(const String &topic, const int32_t &payload, bool retained, int qos) { publish(topic, String(payload), retained, qos); };
+    void publish(const String &topic, const String &payload, bool retained, int qos);
+    void subscribe(const String &topic, int qos);
+    bool connected;
+    struct mg_connection *s_conn;
+    void disconnect(void) { mg_mqtt_disconnect(s_conn, &default_opts); };
+};
+
+extern MQTTclient_t MQTTclient;
+
 #endif
 
 #ifndef ENABLE_OCPP
@@ -36,9 +71,6 @@
 #if ENABLE_OCPP
 #include <MicroOcpp/Model/ConnectorBase/Notification.h>
 #endif
-
-#include "mongoose.h"
-#include <ArduinoJson.h>
 
 extern void WiFiSetup(void);
 

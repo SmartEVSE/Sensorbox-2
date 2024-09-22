@@ -3,6 +3,8 @@
 #define SENSORBOX_SWVER 1                                                       // 0 = Original software
                                                                                 // 1 = Supports extra modbus registers (Time, IP, Hostname etc)       
 
+#define VERSION SENSORBOX_SWVER                                                 // so we are compatible with SmartEVSEv3 firmware               
+
 #define WDT_TIMEOUT 3                                                           // 3 seconds WDT timeout
 
 #define PIN_LED_GREEN 32
