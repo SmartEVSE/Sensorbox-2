@@ -616,10 +616,13 @@ void P1Task(void * parameter) {
       // Smart meter measurement?
       if (datamemory & 0x80 ) {
         snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f",Irms[0], Irms[1], Irms[2]);
-        for (int x = 0; x < 3; x++)
+        for (int x = 0; x < 3; x++) {
             MainsMeterIrms[x] = Irms[x];
+#if MQTT
+            MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", Irms[x], false, 0);
+#endif
+        }
         phasesLastUpdate = time(NULL);
-
         ///ws.textAll(buffer);
         snprintf(buffer, sizeof(buffer), "V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
         ///ws.textAll(buffer);
@@ -629,8 +632,12 @@ void P1Task(void * parameter) {
       // CT measurement  
       } else if (datamemory & 0x03) { 
         snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f", IrmsCT[0], IrmsCT[1], IrmsCT[2]);
-        for (int x = 0; x < 3; x++)
-            MainsMeterIrms[x] = Irms[x];
+        for (int x = 0; x < 3; x++) {
+            MainsMeterIrms[x] = IrmsCT[x];
+#if MQTT
+            MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", IrmsCT[x], false, 0);
+#endif
+        }
         phasesLastUpdate = time(NULL);
         ///ws.textAll(buffer);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",IrmsCT[0],IrmsCT[1],IrmsCT[2]);
