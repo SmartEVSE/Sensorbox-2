@@ -1218,6 +1218,59 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
             String json;
             serializeJson(doc, json);
             mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
+          } else if (mg_http_match_uri(hm, "/settings") && !memcmp("POST", hm->method.buf, hm->method.len) && request->hasParam("mqtt_update")) {
+#if MQTT
+            DynamicJsonDocument doc(64);
+            if (request->getParam("mqtt_update")->value().toInt() == 1) {
+
+                if(request->hasParam("mqtt_host")) {
+                    MQTTHost = request->getParam("mqtt_host")->value();
+                    doc["mqtt_host"] = MQTTHost;
+                }
+
+                if(request->hasParam("mqtt_port")) {
+                    MQTTPort = request->getParam("mqtt_port")->value().toInt();
+                    if (MQTTPort == 0) MQTTPort = 1883;
+                    doc["mqtt_port"] = MQTTPort;
+                }
+
+                if(request->hasParam("mqtt_topic_prefix")) {
+                    MQTTprefix = request->getParam("mqtt_topic_prefix")->value();
+                    if (!MQTTprefix || MQTTprefix == "") {
+                        MQTTprefix = APhostname;
+                    }
+                    doc["mqtt_topic_prefix"] = MQTTprefix;
+                }
+
+                if(request->hasParam("mqtt_username")) {
+                    MQTTuser = request->getParam("mqtt_username")->value();
+                    if (!MQTTuser || MQTTuser == "") {
+                        MQTTuser.clear();
+                    }
+                    doc["mqtt_username"] = MQTTuser;
+                }
+
+                if(request->hasParam("mqtt_password")) {
+                    MQTTpassword = request->getParam("mqtt_password")->value();
+                    if (!MQTTpassword || MQTTpassword == "") {
+                        MQTTpassword.clear();
+                    }
+                    doc["mqtt_password_set"] = (MQTTpassword != "");
+                }
+                write_settings();
+                if (preferences.begin("settings", false) ) {
+                    preferences.putString("MQTTpassword", MQTTpassword);
+                    preferences.putString("MQTTuser", MQTTuser);
+                    preferences.putString("MQTTprefix", MQTTprefix);
+                    preferences.putString("MQTTHost", MQTTHost);
+                    preferences.putUShort("MQTTPort", MQTTPort);
+                    preferences.end();
+                }
+            }
+#endif
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
     /*
     #if MODEM
         } else if (mg_http_match_uri(hm, "/ev_state") && !memcmp("POST", hm->method.buf, hm->method.len)) {
@@ -1516,6 +1569,25 @@ void WiFiSetup(void) {
 #endif
     firmwareUpdateTimer = random(FW_UPDATE_DELAY, 0xffff);
     //firmwareUpdateTimer = random(FW_UPDATE_DELAY, 120); // DINGO TODO debug max 2 minutes
+
+#if MQTT
+    if (preferences.begin("settings", false) ) {
+
+        MQTTpassword = preferences.getString("MQTTpassword");
+        MQTTuser = preferences.getString("MQTTuser");
+        String temp = String(serialnr);
+#if SENSORBOX_VERSION == 20
+        temp = "Sensorbox/" + temp;
+#else
+        temp = "SmartEVSE/" + temp;
+#endif
+        MQTTprefix = preferences.getString("MQTTprefix", temp);
+        MQTTHost = preferences.getString("MQTTHost", "");
+        MQTTPort = preferences.getUShort("MQTTPort", 1883);
+        preferences.end();
+    }
+#endif
+
 }
 
 
@@ -1968,6 +2040,7 @@ void network_loop() {
     if (millis() - lastCheck_net >= 1000) {
         lastCheck_net = millis();
         //this block is for non-time critical stuff that needs to run approx 1 / second
+_LOG_A("DINGO: MQTTprefix=%s.\n", MQTTprefix.c_str());
         getLocalTime(&timeinfo, 1000U);
         if (!LocalTimeSet && WIFImode == 1) {
             _LOG_A("Time not synced with NTP yet.\n");
