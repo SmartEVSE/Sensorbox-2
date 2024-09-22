@@ -1073,7 +1073,12 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
             // stuff to keep compatibility with SmartEVSE
             doc["settings"]["mains_meter"] = "Sensorbox";
             doc["evse"]["temp"] = 0;
-            //doc["evse"]["temp"] = TempEVSE;
+            //doc["evse"]["temp"] = TempEVSE; TODO
+            doc["ev_meter"]["description"] = "Disabled"; //TODO
+            doc["ev_meter"]["currents"]["TOTAL"] = 0; //TODO
+            doc["ev_meter"]["currents"]["L1"] = 0;
+            doc["ev_meter"]["currents"]["L2"] = 0;
+            doc["ev_meter"]["currents"]["L3"] = 0;
 
 
     #if MQTT

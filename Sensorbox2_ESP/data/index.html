@@ -58,10 +58,6 @@
               $('[id=with_errors]').hide();
             }
 
-            $('#battery_current').text((data.home_battery.current/10).toFixed(1) + "A");
-            $('#battery_last_update_time').text(new Date(data.home_battery.last_update * 1000).toLocaleTimeString());
-            $('#battery_last_update_date').text(new Date(data.home_battery.last_update * 1000).toLocaleDateString());
-
             $('#phase_total').text((data.phase_currents.TOTAL/10).toFixed(1) + " A");
             $('#phase_1').text((data.phase_currents.L1/10).toFixed(1) + " A");
             $('#phase_2').text((data.phase_currents.L2/10).toFixed(1) + " A");
