@@ -1,0 +1,126 @@
+name: PlatformIO CI
+on:
+  workflow_call:
+   inputs:
+      major:
+        required: true
+        type: string
+      minor:
+        required: true
+        type: string
+      patch:
+        required: true
+        type: string
+      prerelease:
+        required: false
+        type: string
+   outputs:
+      artifact:
+        description: "The first output string"
+        value: ${{ jobs.build.outputs.artifact }}
+  push:
+    branches:
+      - master
+      - release/*
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get current branch
+        id: branch
+        run: echo "branch=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+      - name: Get current datetime
+        id: datetime
+        run: echo "datetime=$(date +'%Y%m%dT%H%M%S')" >> $GITHUB_OUTPUT
+      - name: Get current time
+        id: time
+        run: echo "time=$(date +'%H%M%S')" >> $GITHUB_OUTPUT
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+              if [ -z "${{ inputs.major }}" ] 
+              then
+                 echo "version=${{ steps.time.outputs.time }}" >> $GITHUB_OUTPUT
+               else
+                 if [ -z "${{ inputs.prerelease }}" ]
+                 then
+                    echo "version=${{ inputs.major }}.${{ inputs.minor }}.${{ inputs.patch }}" >> $GITHUB_OUTPUT
+                 else
+                    echo "version=${{ inputs.major }}.${{ inputs.minor }}.${{ inputs.patch }}-${{ inputs.prerelease }}" >> $GITHUB_OUTPUT
+                 fi
+              fi
+      - uses: actions/checkout@v4
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: '${{ runner.os }}-pip-${{ hashFiles(''**/requirements.txt'') }}'
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Cache PlatformIO
+        uses: actions/cache@v3
+        with:
+          path: ~/.platformio
+          key: '${{ runner.os }}-${{ hashFiles(''**/lockfiles'') }}'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio
+      - name: Build normal version
+        env:
+          super_secret: ${{ secrets.SECRET_RSA_KEY }}
+        run: |
+          PLATFORMIO_BUILD_FLAGS='-DVERSION=\"v${{ steps.version.outputs.version }}\" -DDBG=0' pio run -d Sensorbox2_ESP/
+          # Create a temporary file
+          secret_file=$(mktemp)
+          # Write the secret to the temporary file, because passing it as command line argument might reveal it for users using ps -a
+          echo "$super_secret" > "$secret_file"
+          # Create signature file
+          openssl dgst -sign "$secret_file" -keyform PEM -sha256 -out firmware.sign -binary ./Sensorbox2_ESP/.pio/build/release/firmware.bin
+          # throw it all in one file
+          cat firmware.sign ./Sensorbox2_ESP/.pio/build/release/firmware.bin > ./Sensorbox2_ESP/.pio/build/release/firmware.signed.bin
+          # Remove the temporary file
+          rm -f "$secret_file"
+      - name: Upload firmware.bin
+        uses: actions/upload-artifact@v3
+        with:
+          name: dists_zip
+          path: ./Sensorbox2_ESP/.pio/build/release/*.bin
+          retention-days: 10
+      - name: Upload HowToFlash.txt
+        uses: actions/upload-artifact@v3
+        with:
+          name: dists_zip
+          path: ./Sensorbox2_ESP/HowToFlash.txt
+          retention-days: 10
+      - name: Build debug version
+        env:
+          super_secret: ${{ secrets.SECRET_RSA_KEY }}
+        run: |
+          PLATFORMIO_BUILD_FLAGS='-DVERSION=\"v${{ steps.version.outputs.version }}\" -DDBG=1' pio run -d Sensorbox2_ESP/
+          # Create a temporary file
+          secret_file=$(mktemp)
+          # Write the secret to the temporary file, because passing it as command line argument might reveal it for users using ps -a
+          echo "$super_secret" > "$secret_file"
+          # Create signature file
+          openssl dgst -sign "$secret_file" -keyform PEM -sha256 -out firmware.sign -binary ./Sensorbox2_ESP/.pio/build/release/firmware.bin
+          # throw it all in one file
+          cat firmware.sign ./Sensorbox2_ESP/.pio/build/release/firmware.bin > ./Sensorbox2_ESP/.pio/build/release/firmware.signed.bin
+          # Remove the temporary file
+          rm -f "$secret_file"
+          mv ./Sensorbox2_ESP/.pio/build/release/firmware.bin ./Sensorbox2_ESP/.pio/build/release/firmware.debug.bin
+          mv ./Sensorbox2_ESP/.pio/build/release/firmware.signed.bin ./Sensorbox2_ESP/.pio/build/release/firmware.debug.signed.bin
+      - name: Upload Artifact debug firmware
+        uses: actions/upload-artifact@v3
+        with:
+          name: dists_zip
+          path: ./Sensorbox2_ESP/.pio/build/release/*.bin
+          retention-days: 10
+
+    outputs:
+      artifact: dists_zip
