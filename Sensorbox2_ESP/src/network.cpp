@@ -263,7 +263,7 @@ void SetupMQTTClient() {
 
 }
 #endif
-/*
+
 //github.com L1
     const char* root_ca_github = R"ROOT_CA(
 -----BEGIN CERTIFICATE-----
@@ -375,7 +375,7 @@ bool getLatestVersion(String owner_repo, String asset_name, char *version) {
     }
     _LOG_A("ERROR: could not find asset %s in repo %s at version %s.\n", asset_name.c_str(), owner_repo.c_str(), version);
     httpClient.end();  // We're done with HTTP - free the resources
-    return false;*//*
+    return false;*/
 }
 
 
@@ -642,7 +642,11 @@ bool forceUpdate(const char* firmwareURL, bool validate) {
 void FirmwareUpdate(void *parameter) {
     //_LOG_A("DINGO: url=%s.\n", downloadUrl);
     if (forceUpdate(downloadUrl, 1)) {
+#if SENSORBOX_VERSION != 20
         _LOG_A("Firmware update succesfull; rebooting as soon as no EV is connected.\n");
+#else
+        _LOG_A("Firmware update succesfull; rebooting.\n");
+#endif
         downloadProgress = -1;
         shouldReboot = true;
     } else {
@@ -667,29 +671,6 @@ void RunFirmwareUpdate(void) {
     );
 }
 
-
-/* Takes TimeString in format
- * String = "2023-04-14T11:31"
- * and store it in the DelayedTimeStruct
- * returns 0 on success, 1 on failure
-*//*
-int StoreTimeString(String DelayedTimeStr, DelayedTimeStruct *DelayedTime) {
-    // Parse the time string
-    tm delayedtime_tm = {};
-    if (strptime(DelayedTimeStr.c_str(), "%Y-%m-%dT%H:%M", &delayedtime_tm)) {
-        delayedtime_tm.tm_isdst = -1;                 //so mktime is going to figure out whether DST is there or not
-        DelayedTime->epoch2 = mktime(&delayedtime_tm) - EPOCH2_OFFSET;
-        // Compare the times
-        time_t now = time(nullptr);             //get current local time
-        DelayedTime->diff = DelayedTime->epoch2 - (mktime(localtime(&now)) - EPOCH2_OFFSET);
-        return 0;
-    }
-    //error TODO not sure whether we keep the old time or reset it to zero?
-    //DelayedTime.epoch2 = 0;
-    //DelayedTime.diff = 0;
-    return 1;
-}
-*/
 
 void setTimeZone(void) {
     HTTPClient httpClient;
@@ -894,7 +875,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
               preferences.end();       
             }
             ESP.restart();
-    /*    } else if (mg_http_match_uri(hm, "/autoupdate")) {
+        } else if (mg_http_match_uri(hm, "/autoupdate")) {
             char owner[40];
             char buf[8];
             int debug;
@@ -902,7 +883,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
             mg_http_get_var(&hm->query, "debug", buf, sizeof(buf));
             debug = strtol(buf, NULL, 0);
             if (!memcmp(owner, OWNER_FACT, sizeof(OWNER_FACT)) || (!memcmp(owner, OWNER_COMM, sizeof(OWNER_COMM)))) {
-                asprintf(&downloadUrl, "%s/%s_firmware.%ssigned.bin", FW_DOWNLOAD_PATH, owner, debug ? "debug.": ""); //will be freed in FirmwareUpdate() ; format: http://s3.com/fact_firmware.debug.signed.bin
+                asprintf(&downloadUrl, "%s/%s_sensorboxv2_firmware.%ssigned.bin", FW_DOWNLOAD_PATH, owner, debug ? "debug.": ""); //will be freed in FirmwareUpdate() ; format: http://s3.com/fact_sensorboxv2_firmware.debug.signed.bin
                 RunFirmwareUpdate();
             }                                                                       // after the first call we just report progress
             DynamicJsonDocument doc(64); // https://arduinojson.org/v6/assistant/
@@ -1021,6 +1002,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
                         FREE(signature);
                     }
                 } else //end of firmware.signed.bin
+#if SENSORBOX_VERSION != 20
                 if (!memcmp(file,"rfid.txt", sizeof("rfid.txt"))) {
                     if (offset != 0) {
                         mg_http_reply(c, 400, "", "rfid.txt too big, only 100 rfid's allowed!");
@@ -1063,9 +1045,12 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
                     }
                 } else //end of rfid.txt
                     mg_http_reply(c, 400, "", "only allowed to flash firmware.bin, firmware.debug.bin, firmware.signed.bin, firmware.debug.signed.bin or rfid.txt");
+#else
+                    mg_http_reply(c, 400, "", "only allowed to flash firmware.bin, firmware.debug.bin, firmware.signed.bin, firmware.debug.signed.bin");
+#endif
                 mg_http_reply(c, 200, "", "%ld", res);
             }
-        } else if (mg_http_match_uri(hm, "/currents") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+/*        } else if (mg_http_match_uri(hm, "/currents") && !memcmp("POST", hm->method.buf, hm->method.len)) {
             DynamicJsonDocument doc(200);
     
             if(request->hasParam("battery_current")) {

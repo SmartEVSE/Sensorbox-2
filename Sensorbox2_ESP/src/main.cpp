@@ -1146,6 +1146,10 @@ void loop() {
         // reset the WDT every second
         esp_task_wdt_reset();
 
+        if (shouldReboot) {
+            delay(5000);                                                        //give user some time to read any message on the webserver
+            ESP.restart();
+        }
         _LOG_A("Status: %04x Time: %02u:%02u Date: %02u/%02u/%02u Day:%u ", WIFImode + (LocalTimeSet << 8), timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year%100, timeinfo.tm_wday);
         _LOG_A("Connected to AP: %s Local IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     }

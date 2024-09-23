@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>SmartEVSEv3</title>
+    <title>Sensorbox-2</title>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,9 +12,9 @@
     </style>
     <script>
         let OWNER_FACT="SmartEVSE";
-        let REPO_FACT="SmartEVSE-3";
+        let REPO_FACT="Sensorbox-2";
         let OWNER_COMM="dingo35";
-        let REPO_COMM="SmartEVSE-3.5";
+        let REPO_COMM="Sensorbox-2";
         let update_url="";
 // Helper function to display upload status
 var setStatus = function(text) {
@@ -27,7 +27,7 @@ var setStatus = function(text) {
             .then(data => {
               // code to handle the response
               if (data.progress == -1) { //sucess
-                setStatus('Firmware update succesfully completed, will reboot as soon as no EV is connected.');
+                setStatus('Firmware update succesfully completed, will reboot.');
               }
               else {
                 if (data.progress == -2) { //fail
@@ -98,10 +98,9 @@ var setStatus = function(text) {
           <br><br>
           Flash one of:<ul>
               <li>firmware.bin or firmware.signed.bin (to update the firmware);</li>
-              <li>firmware.debug.bin or firmware.debug.signed.bin (if you want to telnet to your SmartEVSE to see debug messages);</li>
-              <li>rfix.txt (if you want to bulk upload allowed NFC tags for the RFID reader);</li>
+              <li>firmware.debug.bin or firmware.debug.signed.bin (if you want to telnet to your Sensorbox to see debug messages);</li>
           </ul>
-          You should only flash files with those exact names.<br>No need to flash spiffs.bin for versions 3.6.0-RC1 and newer!<br>No need to rename firmware.debug.bin anymore for versions 3.6.0-RC2 and newer!<br>Signed firmware is verified to be original and can be handled by versions 3.6.2 and newer.
+          You should only flash files with those exact names.<br>No need to flash spiffs.bin for versions 2.1.0 and newer!<br>No need to rename firmware.debug.bin anymore for versions 2.1.0 and newer!<br>Signed firmware is verified to be original and can be handled by versions 2.1.0 and newer.
       </div>
       <div id="wrapper">
         <input type="file" id="el1" style="display: none"/>

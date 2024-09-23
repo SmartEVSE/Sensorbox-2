@@ -41,6 +41,7 @@ extern String MQTTHost;
 extern uint16_t MQTTPort;
 //mg_timer *MQTTtimer;
 extern uint8_t lastMqttUpdate;
+extern bool shouldReboot;
 
 class MQTTclient_t {
 private:
