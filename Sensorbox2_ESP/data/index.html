@@ -522,51 +522,6 @@
                             </div>
                         </div>
                     </div>
-                    <div id="ocpp_config_outer" style="margin-bottom: 20px;" class="config">
-                      <div class="card border-left-primary shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Config</div>
-                                    <div class="row no-gutters align-items-center" id="ocpp_config">
-                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
-                                            OCPP:
-                                        </div>
-                                        <div class="col">
-                                          <input type="checkbox" class="form-check-input" id="enable_ocpp" onclick="toggleEnableOcpp()">
-                                          <label class="form-check-label" for="enable_ocpp" id="enable_ocpp_label">Enable OCPP</label>
-                                          <div id="ocpp_settings" style="display: none;">
-                                              <div class="row no-gutters align-items-center" style="margin-top:20px;margin-bottom:10px">
-                                                <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 200px">
-                                                    WebSocket status:
-                                                </div>
-                                                <div class="col">
-                                                  <div class="h5 mb-0 mr-3 text-gray-800" id="ocpp_ws_status"></div>
-                                                </div>
-                                              </div>
-                                              <label>Backend URL: <input id="ocpp_backend_url" class="ui-state-disabled"></label>
-                                              <label>Charge Box Id: <input id="ocpp_cb_id" class="ui-state-disabled"></label>
-                                              <label>Authentication key: <input id="ocpp_auth_key" class="ui-state-disabled"></label>
-                                              <div class="row no-gutters align-items-center" style="margin-top:20px;margin-bottom:10px">
-                                                <div class="col-auto mb-0 mr-3" style="width: 200px">
-                                                  <input type="checkbox" class="form-check-input ui-state-disabled" id="ocpp_auto_auth" onclick="toggleEnableOcppAutoAuth()">
-                                                  <label class="form-check-label ui-state-disabled" for="ocpp_auto_auth" id="ocpp_auto_auth_label">Auto-authorize</label>
-                                                </div>
-                                                <div class="col">
-                                                  <div class="mb-0" id="ocpp_auto_auth_idtag_wrapper">
-                                                    <input id="ocpp_auto_auth_idtag" class="ui-state-disabled" placeholder="Default idTag">
-                                                  </div>
-                                                </div>
-                                              </div>
-                                              <button id="ocpp_save_btn" onclick="toggleOcppEdit()" style="display:inline-block;">Edit Settings</button>
-                                          </div>
-                                        </div>
-                                    </div>
-                                  </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
