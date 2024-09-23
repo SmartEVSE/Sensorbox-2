@@ -395,6 +395,106 @@
                     }
                 </script>
 
+                <!-- Earnings (Monthly) Card Example -->
+                <div style="margin-bottom: 20px;">
+                    <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Control</div>
+<!--
+                                      <div class="row no-gutters align-items-center" id="loadbl_text">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                         Load Balance:
+                                        </div>
+                                      <div class="col h5 mb-0 mr-3 font-weight-bold text-gray-800">
+                                          <span id="loadbl_text_slave">Slave node - control is disabled, perform changes on Master node.</span>
+                                          <span id="loadbl_text_master">Master node - control changes are propagated to Slave node(s).</span>
+                                      </div>
+                                    </div>
+-->                                    
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                          Mode:
+                                        </div>
+                                        <div class="col">
+                                          <form class="form-inline" id="form_mode">
+                                            <button id="mode_0" onclick="activate('0')" style="width: 100px; display:inline-block;">OFF</button>
+                                            <button id="mode_1" onclick="activate('1')" style="width: 120px; display:inline-block;">NORMAL</button>
+                                            <div id="with_mainsmeter" style="display: inline">
+                                              <button id="mode_2" onclick="activate('2')" style="width: 100px; display:inline-block;">SOLAR</button>
+                                              <button id="mode_3" onclick="activate('3')" style="width: 100px; display:inline-block;">SMART</button>
+                                            </div>
+                                            <div class="form-group">
+                                              <label for="starttime">...STARTING: </label>
+                                              <div class="input-group">
+                                                <input type="datetime-local" id="starttime" name="starttime" class="form-control" style="max-width: 220px;">
+                                              </div>
+                                            </div>
+                                            <div class="form-group" id="stoptime_group">
+                                              <label for="stoptime"> ENDING:</label>
+                                              <div class="input-group">
+                                                <input type="datetime-local" id="stoptime" name="stoptime" class="form-control" style="max-width: 220px;">
+                                              </div>
+                                            </div>
+                                            <div class="form-group" id="daily_repeat_group">
+                                              <label for="daily_repeat"> Daily</label>
+                                              <div class="input-group">
+                                                <input type="checkbox" id="daily_repeat" name="daily_repeat" class="form-control" value="daily" style="max-width: 60px;">
+                                              </div>
+                                            </div>
+                                          </form>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;" id="override_current_box">
+                                          Current:
+                                        </div>
+                                        <div class="col" id="override_current_box2">
+                                          <select id="mode_override_current">
+                                              <option id="mode_overide_current_text" value="0">Ampere (press NORMAL/SMART to set)</option>
+                                          </select>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                          Actions:
+                                        </div>
+                                        <div class="col">
+                                          <button onclick="reboot()" style="width: 100px; display:inline-block;">Reboot</button>
+                                          <button onclick="update()" style="width: 100px; display:inline-block;">Update</button>
+                                          <button onclick="rawData()" style="width: 120px; display:inline-block;">Raw Data</button>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center with_modem">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                            Override PWM:
+                                        </div>
+                                        <div class="col">
+                                          <form class="form-inline" id="form_pwm">
+                                            <button onclick="postPWM(0)" style="width: 120px; display:inline-block;">0&#37;</button>
+                                            <button onclick="postPWM(50)" style="width: 120px; display:inline-block;">5&#37;</button>
+                                            <button onclick="postPWM(1024)" style="width: 120px; display:inline-block;">100&#37;</button>
+                                            <button onclick="postPWM(-1)" style="width: 120px; display:inline-block;">reset</button>
+                                          </form>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center with_modem">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                          AutoCharge:
+                                      </div>
+                                      <div class="col">
+                                        <form class="form-inline" id="form_required_evccid">
+                                          <input placeholder="EVCCID to require" id="required_evccid">
+                                          <button onclick="postRequiredEVCCID()" style="width: 120px; display:inline-block;">Update</button>
+                                        </form>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                   <div style="margin-bottom: 20px;" class="config">
                       <div class="card border-left-primary shadow h-100 py-2">
                         <div class="card-body">
@@ -415,6 +515,51 @@
                                                 <label>Topic Prefix: <input id="mqtt_topic_prefix"></label>
                                                 <button onclick="configureMqtt()" style="display:inline-block;">Save</button>
                                             </div>
+                                        </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="ocpp_config_outer" style="margin-bottom: 20px;" class="config">
+                      <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Config</div>
+                                    <div class="row no-gutters align-items-center" id="ocpp_config">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                            OCPP:
+                                        </div>
+                                        <div class="col">
+                                          <input type="checkbox" class="form-check-input" id="enable_ocpp" onclick="toggleEnableOcpp()">
+                                          <label class="form-check-label" for="enable_ocpp" id="enable_ocpp_label">Enable OCPP</label>
+                                          <div id="ocpp_settings" style="display: none;">
+                                              <div class="row no-gutters align-items-center" style="margin-top:20px;margin-bottom:10px">
+                                                <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 200px">
+                                                    WebSocket status:
+                                                </div>
+                                                <div class="col">
+                                                  <div class="h5 mb-0 mr-3 text-gray-800" id="ocpp_ws_status"></div>
+                                                </div>
+                                              </div>
+                                              <label>Backend URL: <input id="ocpp_backend_url" class="ui-state-disabled"></label>
+                                              <label>Charge Box Id: <input id="ocpp_cb_id" class="ui-state-disabled"></label>
+                                              <label>Authentication key: <input id="ocpp_auth_key" class="ui-state-disabled"></label>
+                                              <div class="row no-gutters align-items-center" style="margin-top:20px;margin-bottom:10px">
+                                                <div class="col-auto mb-0 mr-3" style="width: 200px">
+                                                  <input type="checkbox" class="form-check-input ui-state-disabled" id="ocpp_auto_auth" onclick="toggleEnableOcppAutoAuth()">
+                                                  <label class="form-check-label ui-state-disabled" for="ocpp_auto_auth" id="ocpp_auto_auth_label">Auto-authorize</label>
+                                                </div>
+                                                <div class="col">
+                                                  <div class="mb-0" id="ocpp_auto_auth_idtag_wrapper">
+                                                    <input id="ocpp_auto_auth_idtag" class="ui-state-disabled" placeholder="Default idTag">
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              <button id="ocpp_save_btn" onclick="toggleOcppEdit()" style="display:inline-block;">Edit Settings</button>
+                                          </div>
                                         </div>
                                     </div>
                                   </div>
