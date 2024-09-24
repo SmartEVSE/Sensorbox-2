@@ -55,8 +55,6 @@
 
 #include <WiFi.h>
 #include "network.h"
-//#include <AsyncTCP.h>
-#include <Update.h>
 
 #include <esp_task_wdt.h>
 
