@@ -642,7 +642,7 @@ bool forceUpdate(const char* firmwareURL, bool validate) {
 void FirmwareUpdate(void *parameter) {
     //_LOG_A("DINGO: url=%s.\n", downloadUrl);
     if (forceUpdate(downloadUrl, 1)) {
-#if SENSORBOX_VERSION != 20
+#ifndef SENSORBOX_VERSION
         _LOG_A("Firmware update succesfull; rebooting as soon as no EV is connected.\n");
 #else
         _LOG_A("Firmware update succesfull; rebooting.\n");
@@ -1002,7 +1002,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
                         FREE(signature);
                     }
                 } else //end of firmware.signed.bin
-#if SENSORBOX_VERSION != 20
+#ifndef SENSORBOX_VERSION
                 if (!memcmp(file,"rfid.txt", sizeof("rfid.txt"))) {
                     if (offset != 0) {
                         mg_http_reply(c, 400, "", "rfid.txt too big, only 100 rfid's allowed!");
@@ -1347,7 +1347,7 @@ void SetupPortalTask(void * parameter) {
     _LOG_V("Waiting for SmartConfig.\n");
     while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED)) {
         // Also start Serial CLI for entering AP and password.
-#if SENSORBOX_VERSION != 20                                                     // ProvisionCli does not work on Sensorbox
+#ifndef SENSORBOX_VERSION                                                       // ProvisionCli does not work on Sensorbox
         ProvisionCli();
 #endif
         delay(100);
@@ -1358,7 +1358,7 @@ void SetupPortalTask(void * parameter) {
         _LOG_V("\nWiFi Connected, IP Address:%s.\n", WiFi.localIP().toString().c_str());
         WIFImode = 1;
         write_settings();
-#if SENSORBOX_VERSION != 20                                                     //so we are not on a sensorbox but on a smartevse
+#ifndef SENSORBOX_VERSION                                                       //so we are not on a sensorbox but on a smartevse
         LCDNav = 0;
 #endif
     }  
@@ -1418,7 +1418,7 @@ void WiFiSetup(void) {
 
     // Set random AES Key for SmartConfig provisioning, first 8 positions are 0
     // This key is displayed on the LCD, and should be entered when using the EspTouch app.
-#if SENSORBOX_VERSION != 20
+#ifndef SENSORBOX_VERSION
     for (uint8_t i=0; i<8 ;i++) {
         SmartConfigKey[i+8] = random(9) + '1';
     }
@@ -1431,7 +1431,7 @@ void WiFiSetup(void) {
 
         MQTTpassword = preferences.getString("MQTTpassword");
         MQTTuser = preferences.getString("MQTTuser");
-#if SENSORBOX_VERSION == 20
+#ifdef SENSORBOX_VERSION
         MQTTprefix = preferences.getString("MQTTprefix", "Sensorbox/" + String(serialnr));
 #else
         MQTTprefix = preferences.getString("MQTTprefix", "SmartEVSE/" + String(serialnr));
