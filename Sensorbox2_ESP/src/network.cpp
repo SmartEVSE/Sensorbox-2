@@ -1396,8 +1396,31 @@ void handleWIFImode() {
 
 // Setup Wifi 
 void WiFiSetup(void) {
+    // We might need some sort of authentication in the future.
+    // SmartEVSE v3 have programmed ECDSA-256 keys stored in nvs
+    // Unused for now.
+    if (preferences.begin("KeyStorage", true) ) {                               // true = readonly
+//prevent compiler warning
+#if DBG == 1 || (DBG == 2 && LOG_LEVEL != 0)
+        uint16_t hwversion = preferences.getUShort("hwversion");                // 0x0101 (01 = SmartEVSE,  01 = hwver 01)
+#endif
+        serialnr = preferences.getUInt("serialnr");
+        String ec_private = preferences.getString("ec_private");
+        String ec_public = preferences.getString("ec_public");
+        preferences.end();
+
+        _LOG_A("hwversion %04x serialnr:%u \n",hwversion, serialnr);
+        //_LOG_A(ec_public);
+    } else {
+        _LOG_A("No KeyStorage found in nvs!\n");
+        if (!serialnr) serialnr = MacId() & 0xffff;                             // when serialnr is not programmed (anymore), we use the Mac address
+    }
     // overwrite APhostname if serialnr is programmed
-//    APhostname = "SmartEVSE-" + String( serialnr & 0xffff, 10);                 // SmartEVSE access point Name = SmartEVSE-xxxxx
+#ifndef SENSORBOX_VERSION
+    APhostname = "SmartEVSE-" + String( serialnr & 0xffff, 10);                 // SmartEVSE access point Name = SmartEVSE-xxxxx
+#else
+    APhostname = "Sensorbox-" + String( serialnr & 0xffff, 10);                 // SmartEVSE access point Name = SmartEVSE-xxxxx
+#endif
     WiFi.setHostname(APhostname.c_str());
 
     mg_mgr_init(&mgr);  // Initialise event manager

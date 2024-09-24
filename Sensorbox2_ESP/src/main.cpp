@@ -997,21 +997,6 @@ void setup() {
   esp_task_wdt_init(WDT_TIMEOUT, true);     // Setup watchdog
   esp_task_wdt_add(NULL);                   // add current thread to WDT watch
 
-
-  // We might need some sort of authentication in the future.
-  // Sensorbox 2 (hwver 1.10) have programmed ECDSA-256 keys stored in nvs
-  // Unused for now.
-  if (preferences.begin("KeyStorage", true) == true) {        // readonly
-    uint16_t hwversion = preferences.getUShort("hwversion");   // 0x020A (02 = Sensorbox-2 0A = hwver 1.10)
-    serialnr = preferences.getUInt("serialnr");
-    String ec_private = preferences.getString("ec_private");
-    String ec_public = preferences.getString("ec_public");
-    preferences.end(); 
-//    Serial.printf("hwversion %04x serialnr:%u \n",hwversion, serialnr);
-//    Serial.print(ec_public);
-
-  } else Serial.print("No KeyStorage found in nvs!\n");
-
   WiFiSetup();
 
 }
