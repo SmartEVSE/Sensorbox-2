@@ -81,8 +81,8 @@ extern void network_loop(void);
 //String Router_Pass;
 
 // Create a ModbusRTU server and client instance on Serial1 
-ModbusServerRTU MBserver(Serial1, 2000, ToggleRS485);                        // TCP timeout set to 2000 ms
-//ModbusClientRTU MBclient(Serial1, ToggleRS485);  
+ModbusServerRTU MBserver(2000, ToggleRS485);                        // TCP timeout set to 2000 ms
+//ModbusClientRTU MBclient(ToggleRS485);
 
 Preferences preferences;
 
@@ -957,7 +957,7 @@ void setup() {
   // Register worker for address '10', function code 06
   MBserver.registerWorker(10U, WRITE_HOLD_REGISTER, &MBWriteFC06);
   // Start ModbusRTU Node background task
-  MBserver.start();
+  MBserver.begin(Serial1);
   
   
   // Create Task that handles P1 and CT data
