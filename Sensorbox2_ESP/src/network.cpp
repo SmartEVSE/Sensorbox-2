@@ -251,16 +251,15 @@ void SetupMQTTClient() {
 
     //set the parameters for and announce diagnostic sensor entities:
     optional_payload = jsna("entity_category","diagnostic");
-    announce("Error", "sensor");
     announce("WiFi SSID", "sensor");
     announce("WiFi BSSID", "sensor");
     optional_payload = jsna("entity_category","diagnostic") + jsna("device_class","signal_strength") + jsna("unit_of_measurement","dBm");
     announce("WiFi RSSI", "sensor");
-    optional_payload = jsna("entity_category","diagnostic") + jsna("device_class","temperature") + jsna("unit_of_measurement","°C");
-    announce("ESP Temp", "sensor");
     optional_payload = jsna("entity_category","diagnostic") + jsna("device_class","duration") + jsna("unit_of_measurement","s") + jsna("entity_registry_enabled_default","False");
     announce("ESP Uptime", "sensor");
 
+    MQTTclient.publish(MQTTprefix + "/WiFiSSID", String(WiFi.SSID()), true, 0);
+    MQTTclient.publish(MQTTprefix + "/WiFiBSSID", String(WiFi.BSSIDstr()), true, 0);
 }
 #endif
 
@@ -1551,6 +1550,9 @@ void network_loop() {
         if (!LocalTimeSet && WIFImode == 1) {
             _LOG_A("Time not synced with NTP yet.\n");
         }
+        MQTTclient.publish(MQTTprefix + "/ESPUptime", esp_timer_get_time() / 1000000, false, 0);
+        MQTTclient.publish(MQTTprefix + "/WiFiRSSI", String(WiFi.RSSI()), false, 0);
+
     }
 
     mg_mgr_poll(&mgr, 100);                                                     // TODO increase this parameter to up to 1000 to make loop() less greedy

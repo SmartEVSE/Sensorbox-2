@@ -49,14 +49,6 @@
               $('#mqtt_config').hide();
             }
 
-            $('#temp').text(data.evse.temp + " °C / " + data.evse.temp_max + " °C");
-            if(data.evse.error != "None") {
-              $('#error').text(data.evse.error);
-              $('[id=with_errors]').show();
-            } else {
-              $('[id=with_errors]').hide();
-            }
-
             $('#phase_total').text((data.phase_currents.TOTAL/10).toFixed(1) + " A");
             $('#phase_1').text((data.phase_currents.L1/10).toFixed(1) + " A");
             $('#phase_2').text((data.phase_currents.L2/10).toFixed(1) + " A");
@@ -133,14 +125,6 @@
                                 <div class="row no-gutters align-items-center">
                                     <div class="col mr-2">
                                         <div class="text font-weight-bold text-primary text-uppercase mb-1">Sensorbox</div>
-                                        <div class="row no-gutters align-items-center">
-                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
-                                              Temp:
-                                            </div>
-                                            <div class="col">
-                                              <div class="h5 mb-0 mr-3 text-gray-800" id="temp"></div>
-                                            </div>
-                                        </div>
                                         <div class="row no-gutters align-items-center">
                                           <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
                                               MQTT:
