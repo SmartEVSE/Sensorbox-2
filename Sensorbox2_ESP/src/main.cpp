@@ -1041,7 +1041,7 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
             boolean evConnected = pilot != PILOT_12V;                    //when access bit = 1, p.ex. in OFF mode, the STATEs are no longer updated
 */
             DynamicJsonDocument doc(1600); // https://arduinojson.org/v6/assistant/
-            doc["version"] = String(SENSORBOX_SWVER);
+            doc["version"] = String(VERSION);
             doc["serialnr"] = serialnr;
 
             if(WiFi.isConnected()) {
