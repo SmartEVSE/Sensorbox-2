@@ -39,6 +39,16 @@
 #define MQTT 1  // Uncomment or set to 0 to disable MQTT support in code
 #endif
 
+#ifndef MQTT_ESP
+#define MQTT_ESP 0   //set to 0 to use mongoose MQTT
+                     //set to 1 to use ESP MQTT
+                     //mongoose uses less resources but sends malformed MQTT packages sometimes
+#endif
+
+#if MQTT_ESP
+#define MQTT 1          // make sure that if MQTT_ESP is set, that MQTT is set too
+#endif
+
 #if MQTT
 // MQTT connection info
 extern String MQTTuser;
@@ -46,26 +56,36 @@ extern String MQTTpassword;
 extern String MQTTprefix;
 extern String MQTTHost;
 extern uint16_t MQTTPort;
-//mg_timer *MQTTtimer;
 extern uint8_t lastMqttUpdate;
 extern bool shouldReboot;
 
+#if MQTT_ESP == 1
+#include "mqtt_client.h"
+#endif
+
 class MQTTclient_t {
+#if MQTT_ESP == 0
 private:
     struct mg_mqtt_opts default_opts;
+#endif
 public:
+#if MQTT_ESP == 0
     //constructor
     MQTTclient_t () {
         memset(&default_opts, 0, sizeof(default_opts));
         default_opts.qos = 0;
         default_opts.retain = false;
     }
+#endif
     void publish(const String &topic, const int32_t &payload, bool retained, int qos) { publish(topic, String(payload), retained, qos); };
     void publish(const String &topic, const String &payload, bool retained, int qos);
     void subscribe(const String &topic, int qos);
     bool connected;
+#if MQTT_ESP == 0
     struct mg_connection *s_conn;
-    void disconnect(void) { mg_mqtt_disconnect(s_conn, &default_opts); };
+#else
+    esp_mqtt_client_handle_t client;
+#endif
 };
 
 extern MQTTclient_t MQTTclient;

@@ -167,27 +167,42 @@ void mqtt_receive_callback(const String topic, const String payload) {
 
 //wrapper so MQTTClient::Publish works
 void MQTTclient_t::publish(const String &topic, const String &payload, bool retained, int qos) {
-  if (s_conn && connected) {
-    struct mg_mqtt_opts opts = default_opts;
-    opts.topic = mg_str(topic.c_str());
-    opts.message = mg_str(payload.c_str());
-    opts.qos = qos;
-    opts.retain = retained;
-    mg_mqtt_pub(s_conn, &opts);
-  }
+#if MQTT_ESP == 0
+    if (s_conn && connected) {
+        struct mg_mqtt_opts opts = default_opts;
+        opts.topic = mg_str(topic.c_str());
+        opts.message = mg_str(payload.c_str());
+        opts.qos = qos;
+        opts.retain = retained;
+        mg_mqtt_pub(s_conn, &opts);
+    }
+#else
+    //esp_mqtt_client_enqueue(client, topic.c_str(), payload.c_str(), payload.length(), qos, retained, 1);
+    if (connected)
+        esp_mqtt_client_publish(client, topic.c_str(), payload.c_str(), payload.length(), qos, retained);
+#endif
 }
 
 void MQTTclient_t::subscribe(const String &topic, int qos) {
-  if (s_conn && connected) {
-    struct mg_mqtt_opts opts = default_opts;
-    opts.topic = mg_str(topic.c_str());
-    opts.qos = qos;
-    mg_mqtt_sub(s_conn, &opts);
-  }
+#if MQTT_ESP == 0
+    if (s_conn && connected) {
+        struct mg_mqtt_opts opts = default_opts;
+        opts.topic = mg_str(topic.c_str());
+        opts.qos = qos;
+        mg_mqtt_sub(s_conn, &opts);
+    }
+#else
+    if (connected)
+        esp_mqtt_client_subscribe(client, topic.c_str(), qos);
+#endif
 }
 
 MQTTclient_t MQTTclient;
-
+/*
+#if MQTT_ESP ==1
+extern void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, esp_mqtt_event_t *event);
+#endif
+*/
 void SetupMQTTClient() {
     // Set up subscriptions
     MQTTclient.subscribe(MQTTprefix + "/Set/#",1);
@@ -777,7 +792,7 @@ const String& webServerRequest::value() {
 
 struct mg_str empty = mg_str_n("", 0UL);
 
-#if MQTT
+#if MQTT && MQTT_ESP == 0
 char s_mqtt_url[80];
 //TODO perhaps integrate multiple fn callback functions?
 static void fn_mqtt(struct mg_connection *c, int ev, void *ev_data) {
@@ -837,6 +852,44 @@ static void timer_fn(void *arg) {
     if (MQTTclient.s_conn == NULL) MQTTclient.s_conn = mg_mqtt_connect(mgr, s_mqtt_url, &opts, fn_mqtt, NULL);
 }
 #endif
+
+#if MQTT && MQTT_ESP == 1
+/*
+ * @brief Event handler registered to receive MQTT events
+ *
+ *  This function is called by the MQTT client event loop.
+ *
+ * @param handler_args user data registered to the event.
+ * @param base Event base for the handler(always MQTT Base in this example).
+ * @param event_id The id for the received event.
+ * @param event_data The data for the event, esp_mqtt_event_handle_t.
+ */
+void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, esp_mqtt_event_t *event) {
+    switch ((esp_mqtt_event_id_t)event_id) {
+    case MQTT_EVENT_CONNECTED:
+        MQTTclient.connected = true;
+        SetupMQTTClient();
+        break;
+    case MQTT_EVENT_DISCONNECTED:
+        MQTTclient.connected = false;
+        break;
+    case MQTT_EVENT_DATA:
+        {
+        String topic2 = String(event->topic).substring(0,event->topic_len);
+        String payload2 = String(event->data).substring(0,event->data_len);
+        //_LOG_A("Received MQTT EVENT DATA: topic=%s, payload=%s.\n", topic2.c_str(), payload2.c_str());
+        mqtt_receive_callback(topic2, payload2);
+        }
+        break;
+    case MQTT_EVENT_ERROR:
+        _LOG_I("MQTT_EVENT_ERROR; Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+        break;
+    default:
+        break;
+    }
+}
+#endif
+
 
 // Connection event handler function
 // indenting lower level two spaces to stay compatible with old StartWebServer
@@ -1258,6 +1311,21 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             } else {
                 _LOG_A("mDNS responder started. http://%s.local\n",APhostname.c_str());
                 MDNS.addService("http", "tcp", 80);   // announce Web server
+                /////////////playground
+    int n = MDNS.queryService("http", "tcp");
+    if (n == 0) {
+        _LOG_A("no services found\n");
+    } else {
+        _LOG_A("%i service(s) found\n", n);
+        for (int i = 0; i < n; ++i) {
+            // Print details for each service found
+            _LOG_A("  %i: %s (%s:%i))\n", i+1, MDNS.hostname(i).c_str(), MDNS.IP(i).toString().c_str(), MDNS.port(i));
+            if (MDNS.hostname(i).substring(0,10) == "SmartEVSE-") {              // we found a SmartEVSE on the lan!
+                _LOG_A("FOUND a smartevse!!!!!\n");
+            }
+        }
+    }
+                ////////////  end of playground
             }
 
             break;
@@ -1265,10 +1333,14 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             _LOG_A("Connected or reconnected to WiFi\n");
 
 #if MQTT
+#if MQTT_ESP == 0
             if (!MQTTtimer) {
                MQTTtimer = mg_timer_add(&mgr, 3000, MG_TIMER_REPEAT | MG_TIMER_RUN_NOW, timer_fn, &mgr);
             }
+#else
+            esp_mqtt_client_start(MQTTclient.client);
 #endif
+#endif //MQTT
             mg_log_set(MG_LL_NONE);
             //mg_log_set(MG_LL_VERBOSE);
 
@@ -1462,8 +1534,19 @@ void WiFiSetup(void) {
         MQTTPort = preferences.getUShort("MQTTPort", 1883);
         preferences.end();
     }
+
+#if MQTT_ESP == 1
+    char s_mqtt_url[80];
+    snprintf(s_mqtt_url, sizeof(s_mqtt_url), "mqtt://%s:%i", MQTTHost.c_str(), MQTTPort);
+    String lwtTopic = MQTTprefix + "/connected";
+    esp_mqtt_client_config_t mqtt_cfg = { .uri = s_mqtt_url, .client_id=MQTTprefix.c_str(), .username=MQTTuser.c_str(), .password=MQTTpassword.c_str(), .lwt_topic=lwtTopic.c_str(), .lwt_msg="offline", .lwt_qos=0, .lwt_retain=1, .lwt_msg_len=7, .keepalive=15 };
+    MQTTclient.client = esp_mqtt_client_init(&mqtt_cfg);
+    /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
+    esp_mqtt_client_register_event(MQTTclient.client, (esp_mqtt_event_id_t) ESP_EVENT_ANY_ID, (esp_event_handler_t) mqtt_event_handler, NULL);
+
 #endif
 
+#endif //MQTT
 }
 
 
