@@ -1416,9 +1416,9 @@ void WiFiSetup(void) {
     }
     // overwrite APhostname if serialnr is programmed
 #ifndef SENSORBOX_VERSION
-    APhostname = "SmartEVSE-" + String( serialnr & 0xffff, 10);                 // SmartEVSE access point Name = SmartEVSE-xxxxx
+    APhostname = "SmartEVSE-" + String( serialnr);                              // SmartEVSE access point Name = SmartEVSE-xxxxx
 #else
-    APhostname = "Sensorbox-" + String( serialnr & 0xffff, 10);                 // SmartEVSE access point Name = SmartEVSE-xxxxx
+    APhostname = "Sensorbox-" + String( serialnr);
 #endif
     WiFi.setHostname(APhostname.c_str());
 
