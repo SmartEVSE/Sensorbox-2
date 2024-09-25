@@ -1311,21 +1311,6 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             } else {
                 _LOG_A("mDNS responder started. http://%s.local\n",APhostname.c_str());
                 MDNS.addService("http", "tcp", 80);   // announce Web server
-                /////////////playground
-    int n = MDNS.queryService("http", "tcp");
-    if (n == 0) {
-        _LOG_A("no services found\n");
-    } else {
-        _LOG_A("%i service(s) found\n", n);
-        for (int i = 0; i < n; ++i) {
-            // Print details for each service found
-            _LOG_A("  %i: %s (%s:%i))\n", i+1, MDNS.hostname(i).c_str(), MDNS.IP(i).toString().c_str(), MDNS.port(i));
-            if (MDNS.hostname(i).substring(0,10) == "SmartEVSE-") {              // we found a SmartEVSE on the lan!
-                _LOG_A("FOUND a smartevse!!!!!\n");
-            }
-        }
-    }
-                ////////////  end of playground
             }
 
             break;
