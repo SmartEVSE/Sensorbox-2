@@ -94,10 +94,7 @@ const char* PICfirmware = "/PIC18F26K40.hex";
 uint8_t P1data[2000];
 uint16_t ModbusData[50];    // 50 registers
 
-// data that will be stored in 'preferences'
 extern uint8_t WIFImode;
-String APpassword = "00000000";
-// end of data that will be stored in 'preferences'
 uint32_t serialnr;
 
 unsigned long ModbusTimer=0;
@@ -116,22 +113,6 @@ int phasesLastUpdate = 0;
 // ---------------------------------------------------------------------------------------------------------------
 
 
-// Generate random password for AP if not initialized
-void CheckAPpassword(void) {
-  uint8_t i, c;
-  // Set random password if not yet initialized.
-  if (strcmp(APpassword.c_str(), "00000000") == 0) {
-    for (i=0; i<8 ;i++) {
-      c = random(16) + '0';
-      if (c > '9') c += 'a'-'9'-1;
-      APpassword[i] = c;
-    }
-  }
-  Serial.print("APpassword: ");
-  Serial.println(APpassword);
-}
-
-
 void write_settings(void) {
   // Check if stored data is valid
   if (WIFImode > 2) WIFImode = WIFI_MODE;
@@ -139,7 +120,6 @@ void write_settings(void) {
   if (preferences.begin("settings", false) ) {
 
     preferences.putUChar("WIFImode", WIFImode);
-    preferences.putString("APpassword", APpassword);
     preferences.end();
 
   } else Serial.print("Can not open preferences!\n");
@@ -149,17 +129,12 @@ void write_settings(void) {
 void read_settings(bool write) {    
   if (preferences.begin("settings", false) == true) {
     WIFImode = preferences.getUChar("WIFImode", WIFI_MODE);
-    APpassword = preferences.getString("APpassword", AP_PASSWORD);
     TZinfo = preferences.getString("TimezoneInfo","");
     if (TZinfo != "") {
         setenv("TZ",TZinfo.c_str(),1);
         tzset();
     }
     preferences.end();       
-
-    // Check if AP password is unitialized. 
-    // Create random AP password.
-    CheckAPpassword(); 
 
     if (write) write_settings();
 
@@ -677,10 +652,10 @@ ModbusMessage MBReadFC04(ModbusMessage request) {
   ModbusData[n++] = (uint16_t) (localIp[2] << 8) + localIp[3];
   ModbusData[n++] = (uint16_t) (MacId() >> 16);
   ModbusData[n++] = (uint16_t) (MacId() & 0xFFFF);
-  ModbusData[n++] = (uint16_t) (APpassword[7]<<8) + APpassword[6];
-  ModbusData[n++] = (uint16_t) (APpassword[5]<<8) + APpassword[4];
-  ModbusData[n++] = (uint16_t) (APpassword[3]<<8) + APpassword[2];
-  ModbusData[n++] = (uint16_t) (APpassword[1]<<8) + APpassword[0];
+  ModbusData[n++] = 0x0; //(uint16_t) (APpassword[7]<<8) + APpassword[6];
+  ModbusData[n++] = 0x0; //(uint16_t) (APpassword[5]<<8) + APpassword[4];
+  ModbusData[n++] = 0x0; //(uint16_t) (APpassword[3]<<8) + APpassword[2];
+  ModbusData[n++] = 0x0; //(uint16_t) (APpassword[1]<<8) + APpassword[0];
 
   dataready = 0;                                                                // reset dataready and DSMRversion
   DSMRver = 0;
@@ -774,50 +749,50 @@ void setup() {
   while(!Serial); 
   Serial.print("\nSensorbox 2 powerup\n");
 
-	// Initialize SPIFFS
-	if(!SPIFFS.begin(true)){
-		LOG_E("SPIFFS failed! already tried formatting. HALT\n");
+  // Initialize SPIFFS
+  if(!SPIFFS.begin(true)){
+    LOG_E("SPIFFS failed! already tried formatting. HALT\n");
     while (true) {
       delay(1);
     }
-	}
-	Serial.printf("Total SPIFFS bytes: %u, Bytes used: %u\n",SPIFFS.totalBytes(),SPIFFS.usedBytes());
+  }
+  Serial.printf("Total SPIFFS bytes: %u, Bytes used: %u\n",SPIFFS.totalBytes(),SPIFFS.usedBytes());
 
 
-	// Check if the PIC needs updating..
+  // Check if the PIC needs updating..
   if (Pic18ReadConfigs() == 0x6980) {
-		Serial.printf("PIC18F26K40 found\n");
+    Serial.printf("PIC18F26K40 found\n");
 
-		if (SPIFFS.exists(PICfirmware))	{
-			Serial.printf("%s found on SPIFFS\n", PICfirmware);
-			file = SPIFFS.open(PICfirmware, "r");
-			if (!file) {
-				Serial.println("file open failed\n");
-			} else {
-				ProgramPIC(file);                                                       	// Program PIC
-				file.close();                                                           	// close file after use
-				SPIFFS.remove(PICfirmware);                                             	// erase hexfile, so we only program once
-			}
-		} else Serial.printf("%s -not- found on SPIFFS\n", PICfirmware);
+    if (SPIFFS.exists(PICfirmware))  {
+      Serial.printf("%s found on SPIFFS\n", PICfirmware);
+      file = SPIFFS.open(PICfirmware, "r");
+      if (!file) {
+        Serial.println("file open failed\n");
+      } else {
+        ProgramPIC(file);                                                         // Program PIC
+        file.close();                                                             // close file after use
+        SPIFFS.remove(PICfirmware);                                               // erase hexfile, so we only program once
+      }
+    } else Serial.printf("%s -not- found on SPIFFS\n", PICfirmware);
 
-	} else if (Pic16ReadConfigs() == 0x3043) {
-		Serial.printf("PIC16F1704 found\n");
+  } else if (Pic16ReadConfigs() == 0x3043) {
+    Serial.printf("PIC16F1704 found\n");
     PICfirmware = "/PIC16F1704.hex";
     
-    if (SPIFFS.exists(PICfirmware))	{
-			Serial.printf("%s found on SPIFFS\n", PICfirmware);
-			file = SPIFFS.open(PICfirmware, "r");
-			if (!file) {
-				Serial.println("file open failed\n");
-			} else {
-				ProgramPIC16F(file);                                                      // Program PIC
-				file.close();                                                           	// close file after use
-				SPIFFS.remove(PICfirmware);                                             	// erase hexfile, so we only program once
-			}
-		} else Serial.printf("%s -not- found on SPIFFS\n", PICfirmware);
+    if (SPIFFS.exists(PICfirmware))  {
+      Serial.printf("%s found on SPIFFS\n", PICfirmware);
+      file = SPIFFS.open(PICfirmware, "r");
+      if (!file) {
+        Serial.println("file open failed\n");
+      } else {
+        ProgramPIC16F(file);                                                      // Program PIC
+        file.close();                                                             // close file after use
+        SPIFFS.remove(PICfirmware);                                               // erase hexfile, so we only program once
+      }
+    } else Serial.printf("%s -not- found on SPIFFS\n", PICfirmware);
   } else Serial.printf("No PIC found, Not possible to do CT measurements!\n");
 
-	pinMode(PIN_PGD, INPUT);
+  pinMode(PIN_PGD, INPUT);
   pinMode(PIN_PGC, OUTPUT);
 
 
