@@ -40,7 +40,7 @@
 #endif
 
 #ifndef MQTT_ESP
-#define MQTT_ESP 0   //set to 0 to use mongoose MQTT
+#define MQTT_ESP 1   //set to 0 to use mongoose MQTT
                      //set to 1 to use ESP MQTT
                      //mongoose uses less resources but sends malformed MQTT packages sometimes
 #endif
