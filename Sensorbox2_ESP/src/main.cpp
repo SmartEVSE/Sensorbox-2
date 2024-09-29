@@ -122,7 +122,7 @@ void write_settings(void) {
     preferences.putUChar("WIFImode", WIFImode);
     preferences.end();
 
-  } else Serial.print("Can not open preferences!\n");
+  } else _LOG_A("Can not open preferences!\n");
 }
 
 
@@ -138,7 +138,7 @@ void read_settings(bool write) {
 
     if (write) write_settings();
 
-  } else Serial.print("Can not open preferences!\n");
+  } else _LOG_A("Can not open preferences!\n");
 }
 
 
@@ -190,7 +190,7 @@ void CTReceive() {
   while (Serial.available()) {
     ch = Serial.read();
 
-    //Serial.printf("%c",ch);
+    _LOG_V_NO_FUNC("%c",ch);
 
     if (ch == '/') {                                                            // Start character
       CTptr = 0;
@@ -214,7 +214,7 @@ void CTReceive() {
       
       crcdata = (uint16_t) strtol((const char *)CTstring+CTlength, NULL, 16);   // get crc from data, convert to int
       crccal = CRC16(0, CTstring, CTlength);                                    // calculate CRC16 from data
-      //Serial.printf(" length: %u, CRC16: %04x : %04x\n\r",CTlength, crccal, crcdata);
+      _LOG_V(" length: %u, CRC16: %04x : %04x\n\r",CTlength, crccal, crcdata);
 
       if (crcdata == crccal) {
 
@@ -273,7 +273,7 @@ void CTReceive() {
         // if selected Wire setting (3-Wire or 4-Wire) and CW and CCW phase rotation are not correctly set, we can toggle the PGC pin to set it.
         if ((CTwire != Wire) && IrmsMode == 0) {
           x = (4 + Wire - CTwire) % 4;
-          Serial.printf("\nWire:%u CTwire:%u pulses %u\n", Wire, CTwire, x);
+          _LOG_A("\nWire:%u CTwire:%u pulses %u\n", Wire, CTwire, x);
           do {
             digitalWrite (PIN_PGC, HIGH); 
             digitalWrite (PIN_PGC, LOW); 
@@ -283,9 +283,9 @@ void CTReceive() {
         
         // update dataready, so the Master knows the CT's have been read with new data
         dataready |= 0x03;
-        //Serial.printf("\rCT1: %2.1f A CT2: %2.1f A CT3: %2.1f A  ",IrmsCT[0],IrmsCT[1],IrmsCT[2] );
+        _LOG_V("\rCT1: %2.1f A CT2: %2.1f A CT3: %2.1f A  ",IrmsCT[0],IrmsCT[1],IrmsCT[2] );
 
-      } else LOG_E("CRC error in CTdata\n");
+      } else _LOG_A("CRC error in CTdata\n");
       
       CTeot = 0;
       CTptr = 0;
@@ -367,9 +367,9 @@ void P1Extract() {
   if (DSMRver >= 50) dataready |= 0x80;                                     	// P1 dataready
   else dataready |= 0x40;                                                   	// DSMR version not 5.0 !!
 
-  //Serial.printf("L1: %3d V L2: %3d V L3: %3d V  ",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
-  //Serial.printf("L1: %2.1f A L2: %2.1f A L3: %2.1f A  \r\n",Irms[0],Irms[1],Irms[2] );
-  //Serial.printf("Total Power %5d W  ",(int)(Total_power-Total_power_return) );
+  _LOG_V("L1: %3d V L2: %3d V L3: %3d V  ",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
+  _LOG_V("L1: %2.1f A L2: %2.1f A L3: %2.1f A  \r\n",Irms[0],Irms[1],Irms[2] );
+  _LOG_V("Total Power %5d W  ",(int)(TotalPower-TotalPowerReturn) );
 }
 
 
@@ -416,14 +416,14 @@ void P1Receive() {
 
     if (crcP1 == csP1) {                                                        // check if crc's match
       // Send telegram to debug output
-      for (uint16_t x=0; x<P1length+4; x++) Serial.printf("%c",P1data[x]);
-      Serial.print("\n");
+      for (uint16_t x=0; x<P1length+4; x++) _LOG_V_NO_FUNC("%c",P1data[x]);
+      _LOG_V("\n");
 
       P1Extract();                                                              // Extract Voltage and Current values from Smart Meter telegram
     } else {
-      LOG_E("P1 crc error, length %d\n", P1length);
-      //for (uint16_t x=0;x<P1length;x++) Serial.printf("%c",P1data[x]);
-      //Serial.print("\n");
+      _LOG_A("P1 crc error, length %d\n", P1length);
+      //for (uint16_t x=0;x<P1length;x++) _LOG_A("%c",P1data[x]);
+      _LOG_A("\n");
     }
     P1Eot = 0;                                                                  // Mark as processed
     P1ptr = 0;
@@ -445,11 +445,11 @@ void P1Task(void * parameter) {
   
     // Check if there is new P1 data.
     P1Receive();
-    if (!heap_caps_check_integrity_all(true)) Serial.print("\nheap error after P1 receive\n");
+    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after P1 receive\n");
 
     // Check if there is a new measurement from the PIC (CT measurements)
     CTReceive();
-    if (!heap_caps_check_integrity_all(true)) Serial.print("\nheap error after CT receive\n");
+    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after CT receive\n");
 
     // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
     if (dataready > datamemory) datamemory = dataready;
@@ -507,7 +507,7 @@ void P1Task(void * parameter) {
     // keep track of available stack ram
     P1taskram = uxTaskGetStackHighWaterMark( NULL );
 
-    if (!heap_caps_check_integrity_all(true)) Serial.print("\nheap error after printfAll\n");
+    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after printfAll\n");
 
     // delay task for 100mS
     vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -747,50 +747,50 @@ void setup() {
   Serial2.begin(115200, SERIAL_8N1, PIN_RX, -1, true);                          // P1 smartmeter connection, TX pin unused (RX inverted)
   
   while(!Serial); 
-  Serial.print("\nSensorbox 2 powerup\n");
+  _LOG_A("\nSensorbox 2 powerup\n");
 
   // Initialize SPIFFS
   if(!SPIFFS.begin(true)){
-    LOG_E("SPIFFS failed! already tried formatting. HALT\n");
+    _LOG_A("SPIFFS failed! already tried formatting. HALT\n");
     while (true) {
       delay(1);
     }
   }
-  Serial.printf("Total SPIFFS bytes: %u, Bytes used: %u\n",SPIFFS.totalBytes(),SPIFFS.usedBytes());
+  _LOG_A("Total SPIFFS bytes: %u, Bytes used: %u\n",SPIFFS.totalBytes(),SPIFFS.usedBytes());
 
 
   // Check if the PIC needs updating..
   if (Pic18ReadConfigs() == 0x6980) {
-    Serial.printf("PIC18F26K40 found\n");
+    _LOG_A("PIC18F26K40 found\n");
 
     if (SPIFFS.exists(PICfirmware))  {
-      Serial.printf("%s found on SPIFFS\n", PICfirmware);
+      _LOG_A("%s found on SPIFFS\n", PICfirmware);
       file = SPIFFS.open(PICfirmware, "r");
       if (!file) {
-        Serial.println("file open failed\n");
+        _LOG_A("file open failed\n");
       } else {
         ProgramPIC(file);                                                         // Program PIC
         file.close();                                                             // close file after use
         SPIFFS.remove(PICfirmware);                                               // erase hexfile, so we only program once
       }
-    } else Serial.printf("%s -not- found on SPIFFS\n", PICfirmware);
+    } else _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
 
   } else if (Pic16ReadConfigs() == 0x3043) {
-    Serial.printf("PIC16F1704 found\n");
+    _LOG_A("PIC16F1704 found\n");
     PICfirmware = "/PIC16F1704.hex";
     
     if (SPIFFS.exists(PICfirmware))  {
-      Serial.printf("%s found on SPIFFS\n", PICfirmware);
+      _LOG_A("%s found on SPIFFS\n", PICfirmware);
       file = SPIFFS.open(PICfirmware, "r");
       if (!file) {
-        Serial.println("file open failed\n");
+        _LOG_A("file open failed\n");
       } else {
         ProgramPIC16F(file);                                                      // Program PIC
         file.close();                                                             // close file after use
         SPIFFS.remove(PICfirmware);                                               // erase hexfile, so we only program once
       }
-    } else Serial.printf("%s -not- found on SPIFFS\n", PICfirmware);
-  } else Serial.printf("No PIC found, Not possible to do CT measurements!\n");
+    } else _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
+  } else _LOG_A("No PIC found, Not possible to do CT measurements!\n");
 
   pinMode(PIN_PGD, INPUT);
   pinMode(PIN_PGC, OUTPUT);
@@ -845,7 +845,7 @@ void setup() {
   );
 */
 
-  Serial.print("Configuring WDT...\n");
+  _LOG_A("Configuring WDT...\n");
   esp_task_wdt_init(WDT_TIMEOUT, true);     // Setup watchdog
   esp_task_wdt_add(NULL);                   // add current thread to WDT watch
 

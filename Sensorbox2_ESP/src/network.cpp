@@ -1356,7 +1356,7 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
         // for some reason this is not necessary in the SmartEVSEv3 code, but it is for Sensorbox v2:
         case ARDUINO_EVENT_SC_GOT_SSID_PSWD:
         {
-            Serial.println("Got SSID and password");
+            _LOG_A("Got SSID and password.\n");
 
             uint8_t ssid[33] = { 0 };
             uint8_t password[65] = { 0 };
