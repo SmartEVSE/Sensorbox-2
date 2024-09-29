@@ -454,12 +454,17 @@ void P1Task(void * parameter) {
     // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
     if (dataready > datamemory) datamemory = dataready;
 
-    if (!(datamemory & 0x80 ) && !(datamemory & 0x03) && WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5)
-        // if both P1 and CT are not connected,
+    if (!(datamemory & 0x80 ) && WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5 && WIFImode != 2 && esp_timer_get_time() / 1000000 < 180) {
+    //if (!(datamemory & 0x80 ) && !(datamemory & 0x03) && WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5) {
+        // if P1 is not connected,
         // and we have no wifi
+        // and we are not in the first 5 seconds of startup (to give the existing wifi time to connect)
+        // and we are not already in wifimode 2
+        // and we are not later then the first 180s after startup; perhaps we are not interested in having a wifi connection?
         // we go to wifimode 2 smartconfig
-        // but we wait 5 seconds to give the existing wifi time to connect
         WIFImode = 2;
+        handleWIFImode();
+    }
 
     // Every ~2 seconds send measurement data over websockets to browser(s)
     if (socketupdate == 20 && WiFi.status() == WL_CONNECTED) {
@@ -698,6 +703,7 @@ ModbusMessage MBWriteFC06(ModbusMessage request) {
   } else if (addr == 0x801) {
     // Set WiFimode
     WIFImode = value & 3u;
+    handleWIFImode();
     write_settings();
     return ECHO_RESPONSE;  
   }

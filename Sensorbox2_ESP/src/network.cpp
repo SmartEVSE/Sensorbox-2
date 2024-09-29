@@ -1365,7 +1365,7 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             WiFi.begin((char*)ssid, (char *)password);
         }
         break;
-        default: break;
+        default: break;                                                         // prevent compiler warnings
   }
 }
 
@@ -1426,8 +1426,7 @@ void SetupPortalTask(void * parameter) {
 
 
 void handleWIFImode() {
-
-    if (WIFImode == 2 && WiFi.getMode() != WIFI_AP_STA)
+    if (WIFImode == 2 && WiFi.getMode() != WIFI_AP_STA) {
         //now start the portal in the background, so other tasks keep running
         xTaskCreate(
             SetupPortalTask,     // Function that should be called
@@ -1437,6 +1436,7 @@ void handleWIFImode() {
             1,                    // Task priority
             NULL                  // Task handleCTReceive
         );
+    }
 
     if (WIFImode == 1 && WiFi.getMode() == WIFI_OFF) {
         _LOG_A("Starting WiFi..\n");
@@ -1484,7 +1484,6 @@ void WiFiSetup(void) {
     WiFi.setAutoReconnect(true);                                                //actually does nothing since this is the default value
     //WiFi.persistent(true);
     WiFi.onEvent(onWifiEvent);
-//WIFImode = 2; //TODO for testing only
     handleWIFImode();                                                           //go into the mode that was saved in nonvolatile memory
 
     // Init and get the time
