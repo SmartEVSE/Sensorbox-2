@@ -68,6 +68,7 @@
 #include "radix.h"
 #include "prg_pic.h"
 #include <SPI.h>
+#include <HTTPClient.h>
 
 extern struct tm timeinfo;
 extern String TZinfo;
@@ -439,7 +440,6 @@ void P1Receive() {
 //
 void P1Task(void * parameter) {
   uint8_t socketupdate = 0;
-  char buffer[30];
 
   while(1) {
   
@@ -471,38 +471,48 @@ void P1Task(void * parameter) {
     //if (socketupdate == 20 && ws.count() && WiFi.status() == WL_CONNECTED) { TODO DINGO
 
       // Smart meter measurement?
+      char *URL = NULL;
       if (datamemory & 0x80 ) {
-        snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f",Irms[0], Irms[1], Irms[2]);
         for (int x = 0; x < 3; x++) {
             MainsMeterIrms[x] = Irms[x];
 #if MQTT
             MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", Irms[x], false, 0);
 #endif
         }
+        asprintf(&URL, "http://smartevse-7179.lan/currents?L1=%i&L2=%i&L3=%i", (int) MainsMeterIrms[0] * 10, (int) MainsMeterIrms[1] * 10, (int) MainsMeterIrms[2] * 10); //will be freed
         phasesLastUpdate = time(NULL);
-        ///ws.textAll(buffer);
-        snprintf(buffer, sizeof(buffer), "V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
-        ///ws.textAll(buffer);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",Irms[0],Irms[1],Irms[2]);
         //ws.printfAll_P("V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
 
       // CT measurement  
       } else if (datamemory & 0x03) { 
-        snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f", IrmsCT[0], IrmsCT[1], IrmsCT[2]);
         for (int x = 0; x < 3; x++) {
             MainsMeterIrms[x] = IrmsCT[x];
 #if MQTT
             MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", IrmsCT[x], false, 0);
 #endif
         }
+        asprintf(&URL, "http://smartevse-7179.lan/currents?L1=%i&L2=%i&L3=%i", (int) MainsMeterIrms[0] * 10, (int) MainsMeterIrms[1] * 10, (int) MainsMeterIrms[2] * 10); //will be freed
         phasesLastUpdate = time(NULL);
-        ///ws.textAll(buffer);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",IrmsCT[0],IrmsCT[1],IrmsCT[2]);
       }
       else {
         for (int x = 0; x < 3; x++)
             MainsMeterIrms[x] = 0;                                              // better send 0 data then incorrect data?
       }
+      if (URL) {
+          HTTPClient httpClient;
+          httpClient.begin(URL);
+          int httpCode = httpClient.POST("");  //Make the request
+
+          // only handle 200/301, fail on everything else
+          if( httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY ) {
+              _LOG_A("Error on HTTP request (httpCode=%i)\n", httpCode);
+              httpClient.end();
+          }
+          httpClient.end();
+      }
+      FREE(URL);
 
       datamemory = 0;
       socketupdate = 0;
