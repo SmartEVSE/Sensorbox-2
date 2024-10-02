@@ -500,8 +500,8 @@ void P1Task(void * parameter) {
         MQTTclient.publish(MQTTprefix + "/MainsCurrentL3", MainsMeterIrms[2] * 10, false, 0);
 #endif
         if (SmartEVSEHost != "") {                                              // we have a configured wifi host
-            if (SmartEVSEHost.substring(0,3) == "http") {                       // not MQTT, but http[s]
-                asprintf(&URL, "http://%s/currents?L1=%i&L2=%i&L3=%i", SmartEVSEHost.c_str(), (int) MainsMeterIrms[0] * 10, (int) MainsMeterIrms[1] * 10, (int) MainsMeterIrms[2] * 10); //will be freed
+            if (SmartEVSEHost.substring(0,4) == "http") {                       // not MQTT, but http[s]
+                asprintf(&URL, "%s/currents?L1=%i&L2=%i&L3=%i", SmartEVSEHost.c_str(), (int) MainsMeterIrms[0] * 10, (int) MainsMeterIrms[1] * 10, (int) MainsMeterIrms[2] * 10); //will be freed
                 HTTPClient httpClient;
                 httpClient.begin(URL);
                 int httpCode = httpClient.POST("");  //Make the request
