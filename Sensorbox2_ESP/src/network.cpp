@@ -1238,6 +1238,10 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
                 if(request->hasParam("smartevse_host")) {
                     SmartEVSEHost = request->getParam("smartevse_host")->value();
                     doc["smartevse_host"] = SmartEVSEHost;
+                    if (preferences.begin("settings", false) ) {
+                        preferences.putString("SmartEVSEHost", SmartEVSEHost);
+                        preferences.end();
+                    }
                 }
             }
             String json;
@@ -1513,9 +1517,12 @@ void WiFiSetup(void) {
     firmwareUpdateTimer = random(FW_UPDATE_DELAY, 0xffff);
     //firmwareUpdateTimer = random(FW_UPDATE_DELAY, 120); // DINGO TODO debug max 2 minutes
 
-#if MQTT
     if (preferences.begin("settings", false) ) {
-
+        SmartEVSEHost = preferences.getString("SmartEVSEHost", "");
+#if MQTT == 0
+        preferences.end();
+    }
+#else
         MQTTpassword = preferences.getString("MQTTpassword");
         MQTTuser = preferences.getString("MQTTuser");
 #ifdef SENSORBOX_VERSION
