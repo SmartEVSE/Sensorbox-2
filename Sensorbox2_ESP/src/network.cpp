@@ -1414,12 +1414,12 @@ void SetupPortalTask(void * parameter) {
  
     //Wait for SmartConfig packet from mobile.
     _LOG_V("Waiting for SmartConfig.\n");
+    Serial.end();
+    Serial.begin(115200, SERIAL_8N1, PIN_RXD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
     while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED)) {
         // Also start Serial CLI for entering AP and password.
-#ifndef SENSORBOX_VERSION                                                       // ProvisionCli does not work on Sensorbox
         ProvisionCli();
-#endif
-        delay(100);
+        delay(50);
     }                       // loop until connected or Wifi setup menu is exited.
     delay(2000);            // give smartConfig time to send provision status back to the users phone.
         
@@ -1433,6 +1433,8 @@ void SetupPortalTask(void * parameter) {
     }  
 
     CliState = 0;
+    Serial.end();
+    Serial.begin(115200, SERIAL_8N1, PIN_PGD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
     WiFi.stopSmartConfig(); // this makes sure repeated SmartConfig calls are succesfull
     vTaskDelete(NULL);                                                          //end this task so it will not take up resources
 }
