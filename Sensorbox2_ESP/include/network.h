@@ -40,14 +40,20 @@
 #endif
 
 #ifndef MQTT_ESP
+#if MQTT
 #define MQTT_ESP 1   //set to 0 to use mongoose MQTT
                      //set to 1 to use ESP MQTT
                      //mongoose uses less resources but sends malformed MQTT packages sometimes
 #endif
+#endif
 
 #if MQTT_ESP
 #define MQTT 1          // make sure that if MQTT_ESP is set, that MQTT is set too
+#include "mqtt_client.h"
 #endif
+
+extern String SmartEVSEHost;
+extern bool shouldReboot;
 
 #if MQTT
 // MQTT connection info
@@ -55,14 +61,8 @@ extern String MQTTuser;
 extern String MQTTpassword;
 extern String MQTTprefix;
 extern String MQTTHost;
-extern String SmartEVSEHost;
 extern uint16_t MQTTPort;
 extern uint8_t lastMqttUpdate;
-extern bool shouldReboot;
-
-#if MQTT_ESP == 1
-#include "mqtt_client.h"
-#endif
 
 class MQTTclient_t {
 #if MQTT_ESP == 0
