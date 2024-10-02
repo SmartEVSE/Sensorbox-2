@@ -911,6 +911,7 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
             DynamicJsonDocument doc(1600); // https://arduinojson.org/v6/assistant/
             doc["version"] = String(VERSION);
             doc["serialnr"] = serialnr;
+            doc["smartevse_host"] = SmartEVSEHost;
 
             if(WiFi.isConnected()) {
                 switch(WiFi.status()) {

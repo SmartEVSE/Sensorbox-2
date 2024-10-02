@@ -25,6 +25,7 @@
       // let endpoint = 'http://10.0.0.36/settings';
       let initiated=false;
       let mqttEditMode = false;
+      let UploadEditMode = false;
 
       $(document).ready(loadData());
 
@@ -82,6 +83,10 @@
               $('#evmeter_power').text(data.ev_meter.import_active_power.toFixed(1) + " kW");
               $('#evmeter_total_kwh').text(data.ev_meter.total_kwh.toFixed(1) + " kWh");
               $('#evmeter_charged_kwh').text(data.ev_meter.charged_kwh.toFixed(1) + " kWh");
+            }
+
+            if (!UploadEditMode) {
+                $('#smartevse_host').val(data.smartevse_host);
             }
 
             if (data.mqtt && !mqttEditMode) {
@@ -328,6 +333,32 @@
               <div class="row">
 
                 <script>
+                    function toggleUploadEdit() {
+                        UploadEditMode = !UploadEditMode;
+                        $('.upload_settings').toggle();
+                        if (UploadEditMode) {
+                            $('#edit_upload_button').text("Close Settings")
+                        } else {
+                            $('#edit_upload_button').text("Edit Settings")
+                        }
+                    }
+                    function configureUpload() {
+                        var smartevse_host=$('#smartevse_host').val();
+                        if (smartevse_host == "") {
+                            smartevse_host = "%00";
+                        }
+
+                        if (smartevse_host) {
+                            $.post( "/settings?upload_update=1&smartevse_host=" + smartevse_host);
+                            alert('Settings applied');
+                            toggleUploadEdit();
+                        } else {
+                            alert('Missing SmartEVSE address');
+                        }
+
+                        event.preventDefault();
+                    }
+
                     function toggleMqttEdit() {
                         mqttEditMode = !mqttEditMode;
                         $('.mqtt_settings').toggle();
@@ -394,6 +425,30 @@
                                           <button onclick="reboot()" style="width: 100px; display:inline-block;">Reboot</button>
                                           <button onclick="update()" style="width: 100px; display:inline-block;">Update</button>
                                           <button onclick="rawData()" style="width: 120px; display:inline-block;">Raw Data</button>
+                                        </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                  <div style="margin-bottom: 20px;" class="config_serial">
+                      <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Config</div>
+                                    <div class="row no-gutters align-items-center" id="mqtt_config">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                            Upload data to SmartEVSE:
+                                        </div>
+                                        <div class="col">
+                                            <button onclick="toggleUploadEdit()" style="display:inline-block;" id="edit_upload_button">Edit Settings</button>
+                                            <div class="upload_settings" style="display:none">
+                                                <label>SmartEVSE Host: <input id="smartevse_host"></label>
+                                                ( p.ex.: http://smartevse-1234.lan, http://192.168.123.123, or smartevse/1234 for mqtt)
+                                                <button onclick="configureUpload()" style="display:inline-block;">Save</button>
+                                            </div>
                                         </div>
                                     </div>
                                   </div>

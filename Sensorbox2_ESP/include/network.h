@@ -55,6 +55,7 @@ extern String MQTTuser;
 extern String MQTTpassword;
 extern String MQTTprefix;
 extern String MQTTHost;
+extern String SmartEVSEHost;
 extern uint16_t MQTTPort;
 extern uint8_t lastMqttUpdate;
 extern bool shouldReboot;
