@@ -400,7 +400,9 @@ void P1Receive() {
     uint16_t csP1 = CRC16(0, P1data, P1length);                                      // calculate CRC16 from data
     uint16_t crcP1 = (uint16_t) strtol((const char *)P1data + P1length, NULL, 16);   // get crc from data, convert to int
 
-    if (millis() > P1LastMillis + 1500) LOG_W("Missed P1 message\n");
+    if (millis() > P1LastMillis + 1500) {
+        LOG_W("Missed P1 message\n");
+    }
 
     P1LastMillis = millis();
 
@@ -674,8 +676,10 @@ ModbusMessage MBReadFC04(ModbusMessage request) {
   dataready = 0;                                                                // reset dataready and DSMRversion
   DSMRver = 0;
 	
-  if ((millis() - ModbusTimer) > 2500) LOG_W("Missed modbus response\n");
-	ModbusTimer = millis();
+  if ((millis() - ModbusTimer) > 2500) {
+      LOG_W("Missed modbus response\n");
+    ModbusTimer = millis();
+  }
 
   // Loop over all words to be sent
   for (uint16_t i = 0; i < words; i++) {
