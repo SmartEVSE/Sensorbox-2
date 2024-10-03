@@ -92,12 +92,6 @@ jobs:
           name: dists_zip
           path: ./Sensorbox2_ESP/.pio/build/release/*.bin
           retention-days: 10
-      - name: Upload HowToFlash.txt
-        uses: actions/upload-artifact@v3
-        with:
-          name: dists_zip
-          path: ./Sensorbox2_ESP/HowToFlash.txt
-          retention-days: 10
       - name: Build debug version
         env:
           super_secret: ${{ secrets.SECRET_RSA_KEY }}
