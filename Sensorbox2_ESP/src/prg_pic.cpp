@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "main.h"
+#include "network.h"
 #include "radix.h"
 #include "FS.h"
 
@@ -98,7 +99,7 @@ void EnterLVPmode() {
   Send('H');
   Send('P');
   delayMicroseconds(DLY1);
-  //Serial.printf("\nPIC entered LVP mode\n");
+  _LOG_V("\nPIC entered LVP mode\n");
  }
 
 //
@@ -108,7 +109,7 @@ void ExitLVPmode() {
      RESET_HIGH;
      DAT_INPUT;
      CLK_INPUT;
-     //Serial.printf("\nPIC exited LVP mode\n");
+     _LOG_V("\nPIC exited LVP mode\n");
  }
 
 
@@ -177,7 +178,7 @@ uint16_t CmdReadData() {
 void CmdLoadData(uint16_t data, uint8_t n) {
   if (n == (WRITE_LATCHES-2) ) {
     Send(0x00);                                       // don't increase PC
-    //Serial.printf("last word..");
+    _LOG_V("last word..");
   } else Send(0x02);                                  // Load data to program buffer, and increase PC
   delayMicroseconds(DLY1);
   Send((data>>15) & 0xff);                            // MSB is on bit 16
@@ -203,7 +204,7 @@ uint16_t Pic18ReadConfigs() {
   CmdLoadPCAddress(ADR_CHIP_IDS);
   CmdReadData();
   uint16_t DeviceID= CmdReadData();                                             // DeviceID
-  //Serial.printf("%04X", DeviceID);
+  _LOG_V("%04X", DeviceID);
   ExitLVPmode();
   return DeviceID;
 }
@@ -217,7 +218,7 @@ uint8_t ProgramPIC(File file) {
   char programbuffer[WRITE_LATCHES];                                            // block of flash data for the PIC
 
   filesize = file.size();
-  Serial.printf("filesize %u bytes\n", filesize);
+  _LOG_A("filesize %u bytes\n", filesize);
 
   EnterLVPmode();
   CmdLoadPCAddress(ADR_CONFIG);         // Program Flash Memory
@@ -239,17 +240,17 @@ uint8_t ProgramPIC(File file) {
     checksum = 0;
     while ( (filebuffer[n]!=0x0a) && (filebuffer[n]!=0x0d) && (n<45)) {            // verify checksum for each line in the hex file
       checksum = checksum + HexDec2(filebuffer[n], filebuffer[n+1]);
-    //  Serial.printf("%c%c", filebuffer[n],filebuffer[n+1]);
+    //  _LOG_A("%c%c", filebuffer[n],filebuffer[n+1]);
       n=n+2;
     }
-  //  Serial.printf("\n");
+  //  _LOG_A("\n");
     if (checksum!=0) {
-      Serial.printf("checksum error in HEX file %u\n", checksum);
+      _LOG_A("checksum error in HEX file %u\n", checksum);
       ExitLVPmode();
       return 1;
     }
     filepointer = filepointer + n;                                                // set filepointer to end of line
-    //Serial.printf("\nfilepointer set to %u\n", filepointer);
+    _LOG_V("\nfilepointer set to %u\n", filepointer);
 
     // checksum verified OK
     // now decode the line
@@ -263,7 +264,7 @@ uint8_t ProgramPIC(File file) {
     n=n+2;
     if (recordtype == 0x01) {                                                     // End of file
       // it would be wise to do a verification of the programmed data at this point, but we ignore this for now
-      Serial.printf("\nEnd of Hexfile\n");
+      _LOG_A("\nEnd of Hexfile\n");
       ExitLVPmode();
       return 0;
 
@@ -275,13 +276,13 @@ uint8_t ProgramPIC(File file) {
       if (FlashADR!=0)
       {
         CmdLoadPCAddress(FlashADR);                                           // load address to program into PIC
-        Serial.printf("FlashADR %08X: ",FlashADR);
+        _LOG_A("FlashADR %08X: ",FlashADR);
         PrevFlashADR = FlashADR;
         for (p=0; p<WRITE_LATCHES; p=p+2) {
           CmdLoadData((programbuffer[p+1]<<8) + programbuffer[p], p);           // Convert endiness
-        //  Serial.printf("%02X%02X",programbuffer[p+1], programbuffer[p]);
+        //  _LOG_A("%02X%02X",programbuffer[p+1], programbuffer[p]);
         }
-        Serial.printf("\r");
+        _LOG_A("\r");
         CmdBeginProgramI();
         memset(programbuffer, 0xff, sizeof(programbuffer));
       }
@@ -298,13 +299,13 @@ uint8_t ProgramPIC(File file) {
 
         PrevFlashADR+=WRITE_LATCHES;                                            // fix address
         CmdLoadPCAddress(PrevFlashADR);                                             // load address to program into PIC
-        Serial.printf("PrevFlashADR %08X: ",PrevFlashADR);
+        _LOG_A("PrevFlashADR %08X: ",PrevFlashADR);
         PrevFlashADR = FlashADR;
         for (p=0; p<WRITE_LATCHES; p=p+2) {
           CmdLoadData((programbuffer[p+1]<<8) + programbuffer[p], p);           // Convert endiness
-        //  Serial.printf("%02X%02X",programbuffer[p+1], programbuffer[p]);
+        //  _LOG_A("%02X%02X",programbuffer[p+1], programbuffer[p]);
         }
-        Serial.printf("\n");
+        _LOG_A("\n");
         CmdBeginProgramI();
         memset(programbuffer, 0xff, sizeof(programbuffer));
       }
@@ -312,15 +313,15 @@ uint8_t ProgramPIC(File file) {
       // Configuration or UserID area
       if (FlashADR_MSB) {
         CmdLoadPCAddress(FlashADR_MSB<<16);                                     // load address to program into PIC
-        Serial.printf("ExtFlashADR %08X: ",(FlashADR_MSB<<16));
+        _LOG_A("ExtFlashADR %08X: ",(FlashADR_MSB<<16));
         for (n=0; n<(bytecount*2); n=n+4) {
           configdata = HexDec4(filebuffer[startoffset+n+10], filebuffer[startoffset+n+11],filebuffer[startoffset+n+8], filebuffer[startoffset+n+9]);
-        //  Serial.printf("%04X ",configdata);
+        //  _LOG_A("%04X ",configdata);
           CmdLoadData(configdata, WRITE_LATCHES-2);
           CmdBeginProgramI();
           CmdIncAddress();
         }
-        Serial.printf("\r");
+        _LOG_A("\r");
       } else {
         // process latest row of data
         for (n=0; n<(bytecount*2); n=n+2) {
@@ -330,13 +331,13 @@ uint8_t ProgramPIC(File file) {
           // Normal program flash
           if ((fileaddress % WRITE_LATCHES) == 0 ) {                              // Write latch boundary?
             CmdLoadPCAddress(FlashADR);                                           // load address to program into PIC
-            Serial.printf("FlashADR %08X: ",FlashADR);
+            _LOG_A("FlashADR %08X: ",FlashADR);
             PrevFlashADR = FlashADR;
             for (p=0; p<WRITE_LATCHES; p=p+2) {
               CmdLoadData((programbuffer[p+1]<<8) + programbuffer[p], p);       // Convert endiness
-          //    Serial.printf("%02X%02X",programbuffer[p+1], programbuffer[p]);
+          //    _LOG_A("%02X%02X",programbuffer[p+1], programbuffer[p]);
             }
-            Serial.printf("\r");
+            _LOG_A("\r");
             CmdBeginProgramI();
             memset(programbuffer, 0xff, sizeof(programbuffer));
           }
@@ -491,7 +492,7 @@ void EnterLVPmode16F() {
   Send16F('M',8);
   Send16F(0,1);       // one extra bit (33 bits in total)
   delayMicroseconds(DLY1);
-  Serial.printf("\nPIC16 entered LVP mode\n");
+  _LOG_A("\nPIC16 entered LVP mode\n");
  }
 
 
@@ -508,7 +509,7 @@ uint16_t Pic16ReadConfigs() {
   CmdIncAddress16F();
   CmdIncAddress16F();
   uint16_t DeviceID= CmdReadData16F();                                             // DeviceID
-  //Serial.printf("%04X", DeviceID);
+  _LOG_V("%04X", DeviceID);
   ExitLVPmode();
   return DeviceID;
 }
@@ -520,12 +521,12 @@ uint16_t Pic16ReadConfigs() {
 void Store16F(uint32_t address, uint16_t data) {
   static uint8_t tobeprogrammed = 0;
 
- // Serial.printf("Store(address:0x%08X, data:0x%04X\n",address,data);
+ // _LOG_A("Store(address:0x%08X, data:0x%04X\n",address,data);
   if (address<currentAddress) CmdResetAddress16F();
   while (address>currentAddress) {
     if ( ( ((currentAddress + 1) & (WRITE_LATCHES_16F-1)) == 0 ) && tobeprogrammed ) {    // last word of write latch?
       CmdBeginProgram16F();                                                           // program data in write latch
-      //Serial.printf("programmed %u words @ 0x%04X \n",tobeprogrammed, currentAddress );
+      _LOG_V("programmed %u words @ 0x%04X \n",tobeprogrammed, currentAddress );
       tobeprogrammed = 0;
     }
     CmdIncAddress16F();
@@ -538,13 +539,13 @@ void Store16F(uint32_t address, uint16_t data) {
   
   if ( ((currentAddress + 1) & (WRITE_LATCHES_16F-1)) == 0) { 
     CmdBeginProgram16F();     // program one row at once.
-    Serial.printf("0x%04X\r", address);
+    _LOG_A("0x%04X\r", address);
     tobeprogrammed = 0;
   }  
 
   //uint16_t read = CmdReadData16F();
-  //if (read != data) Serial.printf("verify error");
-  //Serial.printf("read: 0x%04X ", read);
+  //if (read != data) _LOG_A("verify error");
+  //_LOG_V("read: 0x%04X ", read);
 
 //  delay(3);
 }
@@ -563,7 +564,7 @@ void ProgramPIC16F(File file) {
     // CODE
     uint32_t address = 0;
     uint32_t filesize = file.size();
-    Serial.printf("filesize %u bytes\n", filesize);
+    _LOG_A("filesize %u bytes\n", filesize);
     
 //    webSocket.sendTXT(num, "pFlashing...");
     uint16_t offset = 0;
@@ -572,11 +573,11 @@ void ProgramPIC16F(File file) {
       uint16_t d_addr;
       uint8_t d_typ;
       String s = file.readStringUntil('\n');
-      //Serial.println(s);
+      //_LOG_A("%s\n,", s);
       d_len=HexDec2(s[1],s[2]);
       d_addr=HexDec4(s[3],s[4],s[5],s[6]);
       d_typ=HexDec2(s[7],s[8]);
-      //Serial.printf("len=%02x addres=%04x type=%02x ",d_len,d_addr,d_typ);
+      _LOG_V("len=%02x addres=%04x type=%02x ",d_len,d_addr,d_typ);
       if (d_typ==0x00) {
         for (uint8_t i=0; i<d_len*2; i+=4) {
           address = d_addr/2+i/4;
@@ -586,7 +587,7 @@ void ProgramPIC16F(File file) {
           } else {
             Store16F(address,data);
             CmdBeginProgram16F();
-            //Serial.printf("program config word @ %04x \n", address);
+            _LOG_V("program config word @ %04x \n", address);
           }
         }
       }
@@ -597,10 +598,10 @@ void ProgramPIC16F(File file) {
           CmdResetAddress16F();
           CmdLoadConfig16F(0x00);
         } 
-        //Serial.printf("Offset=%04x\n",offset);
+        _LOG_V("Offset=%04x\n",offset);
       }
     }
-    Serial.printf("\nProgramming done.\n");
+    _LOG_A("\nProgramming done.\n");
 
 //    f.close();
 //    char tmps[20];

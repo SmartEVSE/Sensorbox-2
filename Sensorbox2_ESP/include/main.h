@@ -1,5 +1,4 @@
 
-
 #define SENSORBOX_VERSION 20                                                    // 2 LSB should be 0, as these are WIRE settings
 #define SENSORBOX_SWVER 1                                                       // 0 = Original software
                                                                                 // 1 = Supports extra modbus registers (Time, IP, Hostname etc)       
@@ -34,3 +33,6 @@
 
 // Toggle pins of the RS485 transceiver.
 void ToggleRS485(bool level);
+
+#define FREE(x) free(x); x = NULL;
+

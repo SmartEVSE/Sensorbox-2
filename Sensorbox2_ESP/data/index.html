@@ -1,156 +1,492 @@
 <!DOCTYPE html>
 <html>
 <head>
+	<title>Sensorbox V2</title>
+
+  <link rel="stylesheet" href="https://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css" />
+	<script src="https://code.jquery.com/jquery-1.11.1.min.js"></script>
+	<script src="https://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+
+  <!-- Required meta tags -->
   <meta charset="utf-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta http-equiv="Cache-control" content="no-cache">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="">
-  <meta name="author" content="">
-  <title>SmartEVSE-Sensorbox</title>
-  <script src="required.js" type="text/javascript"></script>
-  <link href="required.css" rel="stylesheet">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <style>
-  </style>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+
+  <link href="styling.css" rel="stylesheet">
 </head>
 
-<!-- Here starts the body of the page -->
-<!-- some html/javascript code from the simple-evse project-->
 <body>
 
-<!-- Control Container -->
-<div class="container" id="evseContent" style="display: block">
-  <div class="header clearfix">
-    <nav>
-      <ul class="nav pull-right" style="padding:10px">
-        <span class="text-muted" style="font-size:30px;cursor:pointer" onclick="openNav()">&#9776;</span>
-      </ul>
-      <h3 class="text-muted" align=center>SmartEVSE Sensorbox</h3>
-    </nav>
-  </div>
-  <div class id="StatusReady" align=center>
-    <img id="statusImg" src="grid-house.svg" width="50%">
-  </div>
-  <div>
-    <br>
-    <p id="evse_vehicle_state" class="text-center"></p>
-    <br>
-  </div>
-  <div class="panel panel-default table-responsive">
-    <table class="table table-hover">
-      <tbody style="transition:0.5s">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
 
-        <tr style="transition:0.3s">
-          <th><span class="glyphicon glyphicon-flash"></span>&nbsp;&nbsp;Power:</th>
-          <td id="TotalPower" class="text-right">0&nbsp;W</td>
-        </tr>  
-        <tr style="transition:0.3s">
-          <th><span class="glyphicon glyphicon-flash"></span>&nbsp;&nbsp;L1:</th>
-          <td id="IrmsL1" class="text-right">0.0&nbsp;A</td>
-        </tr>
-        <tr style="transition:0.3s">
-          <th><span class="glyphicon glyphicon-flash"></span>&nbsp;&nbsp;L2:</th>
-          <td id="IrmsL2" class="text-right">0.0&nbsp;A</td>
-        </tr>
-        <tr style="transition:0.3s">
-          <th><span class="glyphicon glyphicon-flash"></span>&nbsp;&nbsp;L3:</th>
-          <td id="IrmsL3" class="text-right">0.0&nbsp;A</td>
-        </tr>
-               
-      </tbody>
-    </table>
-  </div>
-    
-</div>
+  <script>
+      let endpoint = document.location + 'settings';
+      // let endpoint = 'http://10.0.0.36/settings';
+      let initiated=false;
+      let mqttEditMode = false;
+      let UploadEditMode = false;
+
+      $(document).ready(loadData());
 
 
-<script language="javascript" type="text/javascript">
+      function loadData(){
+        $.ajax({
+              url: endpoint
+          }).then(function(data) {
+            if(!initiated) {
+              initiated = true;
+              $('#version').append(data.version);
+              sessionStorage.setItem("version",JSON.stringify(data.version));
+              $('#serialnr').append(data.serialnr);
+            }
 
-  var Irms1 = 0.0 ,Irms2= 0.0, Irms3 = 0.0;
-  var Vrms1 = 230, Vrms2 = 230, Vrms3 = 230;
-  var Power;
+            if (data.mqtt) {
+              $('#mqtt').text((data.mqtt.status) || 'N/A').show();
+              $('#mqtt_config').show();
+            } else {
+              $('#mqtt').text('').hide();
+              $('.config').hide();
+              $('#mqtt_config').hide();
+            }
 
-  // This is called when the page finishes loading
-  function init() {
+            $('#phase_total').text((data.phase_currents.TOTAL/10).toFixed(1) + " A");
+            $('#phase_1').text((data.phase_currents.L1/10).toFixed(1) + " A");
+            $('#phase_2').text((data.phase_currents.L2/10).toFixed(1) + " A");
+            $('#phase_3').text((data.phase_currents.L3/10).toFixed(1) + " A");
+            $('#evmeter_currents_total').text((data.ev_meter.currents.TOTAL/10).toFixed(1) + " A");
+            $('#evmeter_currents_1').text((data.ev_meter.currents.L1/10).toFixed(1) + " A");
+            $('#evmeter_currents_2').text((data.ev_meter.currents.L2/10).toFixed(1) + " A");
+            $('#evmeter_currents_3').text((data.ev_meter.currents.L3/10).toFixed(1) + " A");
 
-    // Connect to WebSocket server
-      wsConnect('ws://'+document.location.host+'/ws');
-  }
+            if(data.phase_currents.last_data_update > 0) {
+              $('#p1_data_time').text(new Date(data.phase_currents.last_data_update * 1000).toLocaleTimeString());
+              $('#p1_data_date').text(new Date(data.phase_currents.last_data_update * 1000).toLocaleDateString());
+              $('[id=with_p1_api_data_date]').show();
+              $('[id=with_p1_api_data_time]').show();
+            } else {
+              $('[id=with_p1_api_data_date]').hide();
+              $('[id=with_p1_api_data_time]').hide();
+            }
 
-  // Call this to connect to the WebSocket server
-  function wsConnect(url) {
+            if(data.settings.mains_meter == "Disabled") {
+              $('[id=with_mainsmeter]').hide();
+            } else {
+              $('[id=with_mainsmeter]').show();
+            }
 
-      // Connect to WebSocket server
-      websocket = new WebSocket(url);
-      // Assign callbacks
-      websocket.onopen = function(evt) { onOpen(evt) };
-      websocket.onclose = function(evt) { onClose(evt) };
-      websocket.onmessage = function(evt) { onMessage(evt) };
-      websocket.onerror = function(evt) { onError(evt) };
-  }
+            if(data.ev_meter.description == "Disabled") {
+              $('[id=with_evmeter]').hide();
+            } else {
+              $('[id=with_evmeter]').show();
+              $('#evmeter_description').text(data.ev_meter.description);
+              $('#evmeter_power').text(data.ev_meter.import_active_power.toFixed(1) + " kW");
+              $('#evmeter_total_kwh').text(data.ev_meter.total_kwh.toFixed(1) + " kWh");
+              $('#evmeter_charged_kwh').text(data.ev_meter.charged_kwh.toFixed(1) + " kWh");
+            }
 
-  // Called when a WebSocket connection is established with the server
-  function onOpen(evt) {
+            if (!UploadEditMode) {
+                $('#smartevse_host').val(data.smartevse_host);
+            }
 
-      // Log connection state
-      console.log("Connected");
-  }
+            if (data.mqtt && !mqttEditMode) {
+                $('#mqtt_host').val(data.mqtt.host);
+                $('#mqtt_port').val(data.mqtt.port);
+                $('#mqtt_username').val(data.mqtt.username);
+                $('#mqtt_password').val(data.mqtt.password);
+                $('#mqtt_topic_prefix').val(data.mqtt.topic_prefix);
+            }
 
-  // Called when the WebSocket connection is closed
-  function onClose(evt) {
-
-      // Log disconnection state
-      console.log("Disconnected");
-      // Try to reconnect after a few seconds
-      setTimeout(function() { wsConnect('ws://'+document.location.host+'/ws') }, 2000);
-  }
-
-  // Called when a message is received from the server
-  function onMessage(evt) {
-
-      // Print out our received message
-      console.log("Received: " + evt.data);
-
-      if (evt.data[0] == "V") {
-        var Vrms = evt.data.split(":")[1];
-        Vrms1 = Vrms.split(",")[0];
-        Vrms2 = Vrms.split(",")[1];
-        Vrms3 = Vrms.split(",")[2];
+            setTimeout("loadData()", 5000);
+          });
       }
-
-      if (evt.data[0] == "I") {
-        var Irms = evt.data.split(":")[1];
-        Irms1 = Irms.split(",")[0];
-        Irms2 = Irms.split(",")[1];
-        Irms3 = Irms.split(",")[2];
-        IrmsL1.innerHTML = Irms1 + "&nbsp;A";
-        IrmsL2.innerHTML = Irms2 + "&nbsp;A";
-        IrmsL3.innerHTML = Irms3 + "&nbsp;A";
-
-        Power = Math.round((Vrms1 * Irms1) + (Vrms2 * Irms2) + (Vrms3 * Irms3));
-
-        if (Power < 0 ) document.getElementById("TotalPower").style.color = "green";
-        else document.getElementById("TotalPower").style.color = "orange";
-        TotalPower.innerHTML = Power + "&nbsp;W";
-      }
-  }
-
-  // Called when a WebSocket error occurs
-  function onError(evt) {
-      console.log("ERROR: " + evt.data);
-  }
-
-  // Sends a message to the server (and prints it to the console)
-  function doSend(message) {
-      console.log("Sending: " + message);
-      websocket.send(message);
-  }
-
-    // Call the init function as soon as the page loads
-  window.addEventListener("load", init, false);
-</script>
+  </script>
 
 
+  <!-- Page Wrapper -->
+  <div id="wrapper">
+      <!-- Content Wrapper -->
+      <div id="content-wrapper" class="d-flex flex-column">
+          <!-- Main Content -->
+          <div id="content">
+              <!-- Begin Page Content -->
+              <div class="container-fluid">
+                  <div style="margin-bottom: 20px;">
+                    <div class="card bg-success text-white shadow">
+                        <div class="card-body">
+                          <h1 class="h3 mb-0 text-white-800">Sensorbox V2</h1>
+                          <h1 id="version" class="h5 mb-0 text-white-800">Version: </h1>
+                          <h1 id="serialnr" class="h5 mb-0 text-white-800">Serial: </h1>
+                        </div>
+                    </div>
+                </div>
+
+                  <div class="row">
+
+                    <!-- Earnings (Monthly) Card Example -->
+                    <div style="margin-bottom: 20px;">
+                        <div class="card border-left-primary shadow h-100 py-2">
+                            <div class="card-body">
+                                <div class="row no-gutters align-items-center">
+                                    <div class="col mr-2">
+                                        <div class="text font-weight-bold text-primary text-uppercase mb-1">Sensorbox</div>
+                                        <div class="row no-gutters align-items-center">
+                                          <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 140px;">
+                                              MQTT:
+                                          </div>
+                                          <div class="col">
+                                              <div class="h5 mb-0 mr-3 text-gray-800" id="mqtt"></div>
+                                          </div>
+                                      </div>
+                                    </div>
+                                  <!--  <div class="col-auto">
+                                  //      <i class="fas fa-calendar fa-2x text-gray-300">
+                                  //        <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                  //          <path fill="currentColor" d="M17.3 5C19 6.5 20 8.6 20 11C20 15.4 16.4 19 12 19S4 15.4 4 11C4 8.6 5.1 6.5 6.7 5H17.3M18 3H6L5.4 3.5C3.2 5.4 2 8.1 2 11C2 16.5 6.5 21 12 21S22 16.5 22 11C22 8.1 20.8 5.4 18.6 3.5L18 3M13 7.5C13 8.3 13.7 9 14.5 9S16 8.3 16 7.5 15.3 6 14.5 6 13 6.7 13 7.5M8 7.5C8 8.3 8.7 9 9.5 9S11 8.3 11 7.5 10.3 6 9.5 6 8 6.7 8 7.5M7 13C8.1 13 9 12.1 9 11C9 9.9 8.1 9 7 9S5 9.9 5 11C5 12.1 5.9 13 7 13M11.5 15C11.5 13.9 10.6 13 9.5 13S7.5 13.9 7.5 15C7.5 16.1 8.4 17 9.5 17S11.5 16.1 11.5 15M12 13C13.1 13 14 12.1 14 11C14 9.9 13.1 9 12 9S10 9.9 10 11C10 12.1 10.9 13 12 13M16.5 15C16.5 13.9 15.6 13 14.5 13S12.5 13.9 12.5 15C12.5 16.1 13.4 17 14.5 17S16.5 16.1 16.5 15M19 11C19 9.9 18.1 9 17 9S15 9.9 15 11C15 12.1 15.9 13 17 13S19 12.1 19 11" />
+                                  //        </svg>
+                                  //      </i>
+                                  //  </div> -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+
+                    </div>
+                    <!-- END ROW -->
+                    <div class="row">
+
+                  <div class="col-xl-4 col-md-6 mb-4" id="with_mainsmeter" style="display: none;">
+                    <div class="card border-left-success shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xl font-weight-bold text-info text-uppercase mb-1">Phase Details</div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          Total:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="phase_total" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          L1:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="phase_1" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          L2:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="phase_2" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          L3:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="phase_3" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center" id="with_p1_api_data_date">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          Date:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="p1_data_date" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row no-gutters align-items-center" id="with_p1_api_data_time">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 100px;">
+                                          Time:
+                                        </div>
+                                        <div class="col">
+                                          <div class="h5 mb-0 mr-3 text-gray-800" id="p1_data_time" style="text-align: right;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                      <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                        <path fill="currentColor" d="M16.5,21C13.5,21 12.31,16.76 11.05,12.28C10.14,9.04 9,5 7.5,5C4.11,5 4,11.93 4,12H2C2,11.63 2.06,3 7.5,3C10.5,3 11.71,7.25 12.97,11.74C13.83,14.8 15,19 16.5,19C19.94,19 20.03,12.07 20.03,12H22.03C22.03,12.37 21.97,21 16.5,21Z" />
+                                    </svg>
+                                    </i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+              <div class="col-xl-4 col-md-6 mb-4" id="with_evmeter" style="display: none;">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xl font-weight-bold text-info text-uppercase mb-1">EV Meter</div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      Description:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_description" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      Power:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_power" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      Total kWh:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_total_kwh" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                    Charged kWh:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_charged_kwh" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                  <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                    <path fill="currentColor" d="M17.3 5C19 6.5 20 8.6 20 11C20 15.4 16.4 19 12 19S4 15.4 4 11C4 8.6 5.1 6.5 6.7 5H17.3M18 3H6L5.4 3.5C3.2 5.4 2 8.1 2 11C2 16.5 6.5 21 12 21S22 16.5 22 11C22 8.1 20.8 5.4 18.6 3.5L18 3M13 7.5C13 8.3 13.7 9 14.5 9S16 8.3 16 7.5 15.3 6 14.5 6 13 6.7 13 7.5M8 7.5C8 8.3 8.7 9 9.5 9S11 8.3 11 7.5 10.3 6 9.5 6 8 6.7 8 7.5M7 13C8.1 13 9 12.1 9 11C9 9.9 8.1 9 7 9S5 9.9 5 11C5 12.1 5.9 13 7 13M11.5 15C11.5 13.9 10.6 13 9.5 13S7.5 13.9 7.5 15C7.5 16.1 8.4 17 9.5 17S11.5 16.1 11.5 15M12 13C13.1 13 14 12.1 14 11C14 9.9 13.1 9 12 9S10 9.9 10 11C10 12.1 10.9 13 12 13M16.5 15C16.5 13.9 15.6 13 14.5 13S12.5 13.9 12.5 15C12.5 16.1 13.4 17 14.5 17S16.5 16.1 16.5 15M19 11C19 9.9 18.1 9 17 9S15 9.9 15 11C15 12.1 15.9 13 17 13S19 12.1 19 11" />
+                                  </svg>
+                                </i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+              </div>
+
+
+              <div class="col-xl-4 col-md-6 mb-4" id="with_evmeter" style="display: none;">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xl font-weight-bold text-info text-uppercase mb-1">EV Meter currents</div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      Total:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_currents_total" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      L1:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_currents_1" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      L2:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_currents_2" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                                <div class="row no-gutters align-items-center">
+                                  <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                      L3:
+                                    </div>
+                                    <div class="col">
+                                      <div class="h5 mb-0 mr-3 text-gray-800" id="evmeter_currents_3" style="text-align: right;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-list fa-2x text-gray-300">
+                                  <svg style="width:48px;height:48px" viewBox="0 0 24 24">
+                                    <path fill="currentColor" d="M17.3 5C19 6.5 20 8.6 20 11C20 15.4 16.4 19 12 19S4 15.4 4 11C4 8.6 5.1 6.5 6.7 5H17.3M18 3H6L5.4 3.5C3.2 5.4 2 8.1 2 11C2 16.5 6.5 21 12 21S22 16.5 22 11C22 8.1 20.8 5.4 18.6 3.5L18 3M13 7.5C13 8.3 13.7 9 14.5 9S16 8.3 16 7.5 15.3 6 14.5 6 13 6.7 13 7.5M8 7.5C8 8.3 8.7 9 9.5 9S11 8.3 11 7.5 10.3 6 9.5 6 8 6.7 8 7.5M7 13C8.1 13 9 12.1 9 11C9 9.9 8.1 9 7 9S5 9.9 5 11C5 12.1 5.9 13 7 13M11.5 15C11.5 13.9 10.6 13 9.5 13S7.5 13.9 7.5 15C7.5 16.1 8.4 17 9.5 17S11.5 16.1 11.5 15M12 13C13.1 13 14 12.1 14 11C14 9.9 13.1 9 12 9S10 9.9 10 11C10 12.1 10.9 13 12 13M16.5 15C16.5 13.9 15.6 13 14.5 13S12.5 13.9 12.5 15C12.5 16.1 13.4 17 14.5 17S16.5 16.1 16.5 15M19 11C19 9.9 18.1 9 17 9S15 9.9 15 11C15 12.1 15.9 13 17 13S19 12.1 19 11" />
+                                  </svg>
+                                </i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+              </div>
+
+            </div>
+            <!-- END ROW -->
+              <div class="row">
+
+                <script>
+                    function toggleUploadEdit() {
+                        UploadEditMode = !UploadEditMode;
+                        $('.upload_settings').toggle();
+                        if (UploadEditMode) {
+                            $('#edit_upload_button').text("Close Settings")
+                        } else {
+                            $('#edit_upload_button').text("Edit Settings")
+                        }
+                    }
+                    function configureUpload() {
+                        var smartevse_host=$('#smartevse_host').val();
+                        if (smartevse_host == "") {
+                            smartevse_host = "%00";
+                        }
+
+                        if (smartevse_host) {
+                            $.post( "/settings?upload_update=1&smartevse_host=" + smartevse_host);
+                            alert('Settings applied');
+                            toggleUploadEdit();
+                        } else {
+                            alert('Missing SmartEVSE address');
+                        }
+
+                        event.preventDefault();
+                    }
+
+                    function toggleMqttEdit() {
+                        mqttEditMode = !mqttEditMode;
+                        $('.mqtt_settings').toggle();
+                        if (mqttEditMode) {
+                            $('#edit_mqtt_button').text("Close Settings")
+                        } else {
+                            $('#edit_mqtt_button').text("Edit Settings")
+                        }
+                    }
+                    function configureMqtt() {
+                        var mqtt_host=$('#mqtt_host').val();
+                        var mqtt_port=$('#mqtt_port').val();
+                        var mqtt_username=$('#mqtt_username').val();
+                        var mqtt_password=$('#mqtt_password').val();
+                        var mqtt_topic_prefix=$('#mqtt_topic_prefix').val();
+
+                        if (mqtt_host == "") {
+                            mqtt_host = "%00";
+                        }
+
+                        if (mqtt_username == "") {
+                            mqtt_username = "%00";
+                        }
+
+                        if (mqtt_password == "") {
+                            mqtt_password = "%00";
+                        }
+
+                        if (mqtt_host && mqtt_port) {
+                            $.post( "/settings?mqtt_update=1&mqtt_host=" + mqtt_host +
+                                "&mqtt_port=" + mqtt_port + "&mqtt_username=" + mqtt_username +
+                                "&mqtt_password=" + mqtt_password + "&mqtt_topic_prefix=" + mqtt_topic_prefix);
+                            alert('Settings applied');
+                            toggleMqttEdit();
+                        } else {
+                            alert('Missing broker IP or port');
+                        }
+
+                        event.preventDefault();
+                    }
+                    function reboot() {
+                        $.post( "/reboot");
+                    }
+                    function update() {
+                      window.location.href = "/update";
+                    }
+                    function rawData() {
+                      window.location.href = "/settings";
+                    }
+                </script>
+
+                <!-- Earnings (Monthly) Card Example -->
+                <div style="margin-bottom: 20px;">
+                    <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Control</div>
+                                    <div class="row no-gutters align-items-center">
+                                      <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                          Actions:
+                                        </div>
+                                        <div class="col">
+                                          <button onclick="reboot()" style="width: 100px; display:inline-block;">Reboot</button>
+                                          <button onclick="update()" style="width: 100px; display:inline-block;">Update</button>
+                                          <button onclick="rawData()" style="width: 120px; display:inline-block;">Raw Data</button>
+                                        </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                  <div style="margin-bottom: 20px;" class="config_serial">
+                      <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Config</div>
+                                    <div class="row no-gutters align-items-center" id="mqtt_config">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                            Upload data to SmartEVSE:
+                                        </div>
+                                        <div class="col">
+                                            <button onclick="toggleUploadEdit()" style="display:inline-block;" id="edit_upload_button">Edit Settings</button>
+                                            <div class="upload_settings" style="display:none">
+                                                <label>SmartEVSE Host: <input id="smartevse_host"></label>
+                                                ( p.ex.: http://smartevse-1234.lan, http://192.168.123.123, or SmartEVSE/1234 for mqtt; CASE SENSITIVE!)
+                                                <button onclick="configureUpload()" style="display:inline-block;">Save</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                  <div style="margin-bottom: 20px;" class="config">
+                      <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text font-weight-bold text-primary text-uppercase mb-1">Config</div>
+                                    <div class="row no-gutters align-items-center" id="mqtt_config">
+                                        <div class="col-auto h5 mb-0 mr-3 font-weight-bold text-gray-800" style="width: 120px;">
+                                            MQTT:
+                                        </div>
+                                        <div class="col">
+                                            <button onclick="toggleMqttEdit()" style="display:inline-block;" id="edit_mqtt_button">Edit Settings</button>
+                                            <div class="mqtt_settings" style="display:none">
+                                                <label>Host: <input id="mqtt_host"></label>
+                                                <label>Port: <input id="mqtt_port"></label>
+                                                <label>Username: <input id="mqtt_username"></label>
+                                                <label>Password: <input id="mqtt_password"></label>
+                                                <label>Topic Prefix: <input id="mqtt_topic_prefix"></label>
+                                                <button onclick="configureMqtt()" style="display:inline-block;">Save</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                  </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      </div>
+  </div>
 </body>
 </html>

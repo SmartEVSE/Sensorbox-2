@@ -54,11 +54,8 @@
 #include <SPIFFS.h>
 
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include <ESPAsync_WiFiManager.h>
-#include <ESPmDNS.h>
-#include <Update.h>
+#include "network.h"
+
 #include <esp_task_wdt.h>
 
 #include "Logging.h"
@@ -70,39 +67,19 @@
 #include "main.h"
 #include "radix.h"
 #include "prg_pic.h"
-
 #include <SPI.h>
+#include <HTTPClient.h>
 
-const char* NTP_SERVER = "europe.pool.ntp.org";
-// Specification of the Time Zone string:
-// http://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
-// list of time zones: https://remotemonitoringsystems.ca/time-zone-abbreviations.php
-// more: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
-//
-const char* TZ_INFO    = "CET-1CEST-2,M3.5.0/2,M10.5.0/3";      // Europe/Amsterdam
-//const char* TZ_INFO    = "GMT+0IST-1,M3.5.0/1,M10.5.0/2";     // Europe/Dublin
-//const char* TZ_INFO    = "EET-2EEST-3,M3.5.0/3,M10.5.0/4";    // Europe/Helsinki
-//const char* TZ_INFO    = "WET-0WEST-1,M3.5.0/1,M10.5.0/2";    // Europe/Lisbon
-//const char* TZ_INFO    = "GMT+0BST-1,M3.5.0/1,M10.5.0/2";     // Europe/London
-//const char* TZ_INFO    = "PST8PDT,M3.2.0,M11.1.0";            // USA, Los Angeles
+extern struct tm timeinfo;
+extern String TZinfo;
 
-struct tm timeinfo;
-
-AsyncWebServer webServer(80);
-AsyncWebSocket ws("/ws");           // data to/from webpage
-DNSServer dnsServer;
-IPAddress localIp;
-String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
-
-ESPAsync_WiFiManager ESPAsync_wifiManager(&webServer, &dnsServer, APhostname.c_str());
-
-// SSID and PW for your Router
-String Router_SSID;
-String Router_Pass;
+//String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
+extern String APhostname;
+extern void network_loop(void);
 
 // Create a ModbusRTU server and client instance on Serial1 
-ModbusServerRTU MBserver(Serial1, 2000, ToggleRS485);                        // TCP timeout set to 2000 ms
-//ModbusClientRTU MBclient(Serial1, ToggleRS485);  
+ModbusServerRTU MBserver(2000, ToggleRS485);                        // TCP timeout set to 2000 ms
+//ModbusClientRTU MBclient(ToggleRS485);
 
 Preferences preferences;
 
@@ -114,39 +91,23 @@ const char* PICfirmware = "/PIC18F26K40.hex";
 uint8_t P1data[2000];
 uint16_t ModbusData[50];    // 50 registers
 
-// data that will be stored in 'preferences'
-uint8_t WIFImode = WIFI_MODE;                                               // WiFi Mode (0:Disabled / 1:Enabled / 2:Start Portal)
-String APpassword = "00000000";
-// end of data that will be stored in 'preferences'
+extern uint8_t WIFImode;
+uint32_t serialnr;
 
 unsigned long ModbusTimer=0;
 unsigned char dataready=0, CTcount, DSMRver, IrmsMode = 0;
 unsigned char LedCnt, LedState, LedSeq[3] = {0,0,0};
 float Irms[3], Volts[3], IrmsCT[3];                                           // float is 32 bits
+float MainsMeterIrms[3];                                                      // float is 32 bits
 uint8_t datamemory = 0;
 unsigned char led = 0, Wire = WIRES4 + CW;
 uint16_t blinkram = 0, P1taskram = 0;
-bool LocalTimeSet = false;
+extern bool LocalTimeSet;
+int phasesLastUpdate = 0;
 
 // ------------------------------------------------ Settings -----------------------------------------------------
 // 
 // ---------------------------------------------------------------------------------------------------------------
-
-
-// Generate random password for AP if not initialized
-void CheckAPpassword(void) {
-  uint8_t i, c;
-  // Set random password if not yet initialized.
-  if (strcmp(APpassword.c_str(), "00000000") == 0) {
-    for (i=0; i<8 ;i++) {
-      c = random(16) + '0';
-      if (c > '9') c += 'a'-'9'-1;
-      APpassword[i] = c;
-    }
-  }
-  Serial.print("APpassword: ");
-  Serial.println(APpassword);
-}
 
 
 void write_settings(void) {
@@ -156,263 +117,26 @@ void write_settings(void) {
   if (preferences.begin("settings", false) ) {
 
     preferences.putUChar("WIFImode", WIFImode);
-    preferences.putString("APpassword", APpassword);
     preferences.end();
 
-  } else Serial.print("Can not open preferences!\n");
+  } else _LOG_A("Can not open preferences!\n");
 }
 
 
 void read_settings(bool write) {    
   if (preferences.begin("settings", false) == true) {
     WIFImode = preferences.getUChar("WIFImode", WIFI_MODE);
-    APpassword = preferences.getString("APpassword", AP_PASSWORD);
+    TZinfo = preferences.getString("TimezoneInfo","");
+    if (TZinfo != "") {
+        setenv("TZ",TZinfo.c_str(),1);
+        tzset();
+    }
     preferences.end();       
-
-    // Check if AP password is unitialized. 
-    // Create random AP password.
-    CheckAPpassword(); 
 
     if (write) write_settings();
 
-  } else Serial.print("Can not open preferences!\n");
+  } else _LOG_A("Can not open preferences!\n");
 }
-
-
-
-
-// ------------------------------------------------ Webserver ----------------------------------------------------
-// 
-// ---------------------------------------------------------------------------------------------------------------
-
-
-void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
-    Serial.print("WiFi lost connection.\n");
-    // try to reconnect when not connected to AP
-    if (WiFi.getMode() != WIFI_AP_STA && WIFImode) {                        
-        Serial.print("Trying to Reconnect\n");
-        WiFi.begin();
-    }
-}
-
-void WiFiStationGotIp(WiFiEvent_t event, WiFiEventInfo_t info) {
-    localIp = WiFi.localIP();
-    Serial.print("Connected to AP: "); Serial.print(WiFi.SSID());
-    Serial.print("\nLocal IP: "); Serial.print(localIp);
-    Serial.print("\n");
-}
-
-
-
-void onWsEvent(AsyncWebSocket * webServer, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
-  if (type == WS_EVT_CONNECT) {
-    Serial.printf("ws[%s][%u] connect\n", webServer->url(), client->id());
-//    client->printf("Hello Client %u :)", client->id());
-//    client->ping();
-    
-  } else if (type == WS_EVT_DISCONNECT) {
-    Serial.printf("ws[%s][%u] disconnect\n", webServer->url(), client->id());
-  } else if(type == WS_EVT_PONG){
-//   Serial.printf("ws[%s][%u] pong[%u]: %s\n", webServer->url(), client->id(), len, (len)?(char*)data:"");
-  } else if (type == WS_EVT_DATA){
-
-    Serial.println("Data received: ");
-    for (int i=0; i < len; i++) {
-      Serial.print((char) data[i]);
-    }
-    Serial.println();
-  }
-  Serial.printf("Free: %u blink: %u P1task: %u\n",ESP.getFreeHeap(), blinkram, P1taskram );
-}
-
-
-//
-// 404 (page not found) handler
-// 
-void onRequest(AsyncWebServerRequest *request){
-    //Handle Unknown Request
-    request->send(404);
-}
-
-
-void StopwebServer(void) {
-    ws.closeAll();
-    webServer.end();
-    Serial.print("HTTP server stopped\n");
-}
-
-
-void StartwebServer(void) {
-
-    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        Serial.print("page / (root) requested and sent\n");
-        request->send(SPIFFS, "/index.html", String(), false);
-    });
-    // handles compressed .js file from SPIFFS
-    webServer.on("/required.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-        AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/required.js", "text/javascript");
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-    // handles compressed .css file from SPIFFS
-    webServer.on("/required.css", HTTP_GET, [](AsyncWebServerRequest *request) {
-        AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/required.css", "text/css");
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
- 
-    webServer.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/html", "spiffs.bin updates the SPIFFS partition<br>firmware.bin updates the main firmware<br><form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>");
-    });
-
-    webServer.on("/erasesettings", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/plain", "Erasing settings, rebooting");
-        if ( preferences.begin("settings", false) ) {         // our own settings
-          preferences.clear();
-          preferences.end();
-        }
-        if (preferences.begin("nvs.net80211", false) ) {      // WiFi settings used by ESP
-          preferences.clear();
-          preferences.end();       
-        }
-        ESP.restart();
-    });
-
-    webServer.on("/update", HTTP_POST, [](AsyncWebServerRequest *request) {
-       bool shouldReboot = !Update.hasError();
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", shouldReboot?"OK":"FAIL");
-        response->addHeader("Connection", "close");
-        request->send(response);
-        delay(500);
-        if (shouldReboot) ESP.restart();
-    },[](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
-        if(!index) {
-            Serial.printf("\nUpdate Start: %s\n", filename.c_str());
-                if (filename == "spiffs.bin" ) {
-                    Serial.print("\nSPIFFS partition write\n");
-                    // Partition size is 0x90000
-                    if(!Update.begin(0x90000, U_SPIFFS)) {
-                        Update.printError(Serial);
-                    }    
-                } else if(!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000), U_FLASH) {
-                    Update.printError(Serial);
-                }    
-        }
-        if(!Update.hasError()) {
-            if(Update.write(data, len) != len) {
-                Update.printError(Serial);
-            } else Serial.printf("bytes written %u\r", index+len);
-        }
-        if(final) {
-            if(Update.end(true)) {
-                Serial.print("\nUpdate Success\n");
-            } else {
-                Update.printError(Serial);
-            }
-        }
-    });
-
-    // attach filesystem root at URL /
-    webServer.serveStatic("/", SPIFFS, "/");
-
-    // setup 404 handler 'onRequest'
-    webServer.onNotFound(onRequest);
-
-    // setup websockets handler 'onWsEvent'
-    ws.onEvent(onWsEvent);
-    webServer.addHandler(&ws);
-    
-    // Setup async webserver
-    webServer.begin();
-    Serial.print("HTTP server started\n");
-
-}
-
-
-// Setup Wifi 
-void WiFiSetup(void) {
-
-    //ESPAsync_wifiManager.resetSettings();   //reset saved settings
-
-    ESPAsync_wifiManager.setDebugOutput(true);
-    // Set config portal channel, default = 1. Use 0 => random channel from 1-13
-    ESPAsync_wifiManager.setConfigPortalChannel(0);
-    ESPAsync_wifiManager.setAPStaticIPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
-    // Portal will be available 2 minutes to connect to, then close. (if connected within this time, it will remain active)
-    ESPAsync_wifiManager.setConfigPortalTimeout(120);   
-
-    localIp = WiFi.localIP();
-
-    // Start the mDNS responder so that the SmartEVSE can be accessed using a local hostame: http://SmartEVSE-xxxxxx.local
-    if (!MDNS.begin(APhostname.c_str())) {                
-        Serial.print("Error setting up MDNS responder!\n");
-    } else {
-        Serial.print("mDNS responder started. http://");
-        Serial.print(APhostname);
-        Serial.print(".local\n");
-    }
-        
-    // On disconnect Event, call function
-    WiFi.onEvent(WiFiStationDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);    
-    // On IP, call function
-    WiFi.onEvent(WiFiStationGotIp, ARDUINO_EVENT_WIFI_STA_GOT_IP);  // arduino 2.x
-    //WiFi.onEvent (WiFiAPstop, SYSTEM_EVENT_AP_STOP);
-    
-
-    // Init and get the time
-    // See https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv for timezone codes for your region
-    configTzTime(TZ_INFO, NTP_SERVER);
-    
-    // test code, sets time to 31-OCT, 02:59:50 , 10 seconds before DST will be switched off
-    // timeval epoch = {1635641990, 0};                    
-    // settimeofday((const timeval*)&epoch, 0);            
-}
-
-
-
-void SetupNetworkTask(void * parameter) {
-
-  WiFiSetup();
-  StartwebServer();
-
-  while(1) {
-
-    // retrieve time from NTP server
-    LocalTimeSet = getLocalTime(&timeinfo, 1000U);
-    
-    // Cleanup old websocket clients
-    ws.cleanupClients();
-
-    if (WIFImode == 2 && WiFi.getMode() != WIFI_AP_STA) {
-      Serial.print("Start Portal...\n");
-      StopwebServer();
-      ESPAsync_wifiManager.startConfigPortal(APhostname.c_str(), APpassword.c_str());         // blocking until connected or timeout.
-      WIFImode = 1;
-      write_settings();
-      StartwebServer();       //restart webserver
-    }
-
-    if (WIFImode == 1 && WiFi.getMode() == WIFI_OFF) {
-      Serial.print("Starting WiFi..\n");
-      WiFi.mode(WIFI_STA);
-      WiFi.begin();
-    }    
-
-    if (WIFImode == 0 && WiFi.getMode() != WIFI_OFF) {
-      Serial.print("Stopping WiFi..\n");
-      WiFi.disconnect(true);
-    }   
-
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-  } // while(1)
-
-}
-
-
-// ------------------------------------------------ Webserver End ------------------------------------------------
-// 
-// ---------------------------------------------------------------------------------------------------------------
-
 
 
 // Poly used is x^16+x^15+x^2+x
@@ -440,7 +164,7 @@ unsigned int CRC16(unsigned int crc, unsigned char *buf, int len)
 // CT data is measured by the PIC, is send on a serial line to Serial0 of the ESP32
 // The final calculations and phase angle corrections are done by the ESP32.  
 // We use / as start line char, ! is end of line, just like a P1 message the data is followed by a CRC16 checksum
-// Called by T1Task every 100ms
+// Called by P1Task every 100ms
 //
 void CTReceive() {
 	char *ret, ch;
@@ -456,7 +180,7 @@ void CTReceive() {
   while (Serial.available()) {
     ch = Serial.read();
 
-    //Serial.printf("%c",ch);
+    _LOG_V_NO_FUNC("%c",ch);
 
     if (ch == '/') {                                                            // Start character
       CTptr = 0;
@@ -480,7 +204,7 @@ void CTReceive() {
       
       crcdata = (uint16_t) strtol((const char *)CTstring+CTlength, NULL, 16);   // get crc from data, convert to int
       crccal = CRC16(0, CTstring, CTlength);                                    // calculate CRC16 from data
-      //Serial.printf(" length: %u, CRC16: %04x : %04x\n\r",CTlength, crccal, crcdata);
+      _LOG_V(" length: %u, CRC16: %04x : %04x\n\r",CTlength, crccal, crcdata);
 
       if (crcdata == crccal) {
 
@@ -539,7 +263,7 @@ void CTReceive() {
         // if selected Wire setting (3-Wire or 4-Wire) and CW and CCW phase rotation are not correctly set, we can toggle the PGC pin to set it.
         if ((CTwire != Wire) && IrmsMode == 0) {
           x = (4 + Wire - CTwire) % 4;
-          Serial.printf("\nWire:%u CTwire:%u pulses %u\n", Wire, CTwire, x);
+          _LOG_A("\nWire:%u CTwire:%u pulses %u\n", Wire, CTwire, x);
           do {
             digitalWrite (PIN_PGC, HIGH); 
             digitalWrite (PIN_PGC, LOW); 
@@ -549,9 +273,9 @@ void CTReceive() {
         
         // update dataready, so the Master knows the CT's have been read with new data
         dataready |= 0x03;
-        //Serial.printf("\rCT1: %2.1f A CT2: %2.1f A CT3: %2.1f A  ",IrmsCT[0],IrmsCT[1],IrmsCT[2] );
+        _LOG_V("\rCT1: %2.1f A CT2: %2.1f A CT3: %2.1f A  ",IrmsCT[0],IrmsCT[1],IrmsCT[2] );
 
-      } else LOG_E("CRC error in CTdata\n");
+      } else _LOG_A("CRC error in CTdata\n");
       
       CTeot = 0;
       CTptr = 0;
@@ -633,15 +357,15 @@ void P1Extract() {
   if (DSMRver >= 50) dataready |= 0x80;                                     	// P1 dataready
   else dataready |= 0x40;                                                   	// DSMR version not 5.0 !!
 
-  //Serial.printf("L1: %3d V L2: %3d V L3: %3d V  ",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
-  //Serial.printf("L1: %2.1f A L2: %2.1f A L3: %2.1f A  \r\n",Irms[0],Irms[1],Irms[2] );
-  //Serial.printf("Total Power %5d W  ",(int)(Total_power-Total_power_return) );
+  _LOG_V("L1: %3d V L2: %3d V L3: %3d V  ",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
+  _LOG_V("L1: %2.1f A L2: %2.1f A L3: %2.1f A  \r\n",Irms[0],Irms[1],Irms[2] );
+  _LOG_V("Total Power %5d W  ",(int)(TotalPower-TotalPowerReturn) );
 }
 
 
 // ----------------------------------------------------------------------------------------------------------------
 //  Reads P1 data from Serial2, checks crc, and stores in P1data buffer
-//  Called by T1Task every 100ms
+//  Called by P1Task every 100ms
 //
 void P1Receive() {
   uint8_t RXbyte;
@@ -682,14 +406,14 @@ void P1Receive() {
 
     if (crcP1 == csP1) {                                                        // check if crc's match
       // Send telegram to debug output
-      for (uint16_t x=0; x<P1length+4; x++) Serial.printf("%c",P1data[x]);
-      Serial.print("\n");
+      for (uint16_t x=0; x<P1length+4; x++) _LOG_V_NO_FUNC("%c",P1data[x]);
+      _LOG_V("\n");
 
       P1Extract();                                                              // Extract Voltage and Current values from Smart Meter telegram
     } else {
-      LOG_E("P1 crc error, length %d\n", P1length);
-      //for (uint16_t x=0;x<P1length;x++) Serial.printf("%c",P1data[x]);
-      //Serial.print("\n");
+      _LOG_A("P1 crc error, length %d\n", P1length);
+      //for (uint16_t x=0;x<P1length;x++) _LOG_A("%c",P1data[x]);
+      _LOG_A("\n");
     }
     P1Eot = 0;                                                                  // Mark as processed
     P1ptr = 0;
@@ -705,39 +429,89 @@ void P1Receive() {
 //
 void P1Task(void * parameter) {
   uint8_t socketupdate = 0;
-  char buffer[30];
 
   while(1) {
   
     // Check if there is new P1 data.
     P1Receive();
-    if (!heap_caps_check_integrity_all(true)) Serial.print("\nheap error after P1 receive\n");
+    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after P1 receive\n");
 
     // Check if there is a new measurement from the PIC (CT measurements)
     CTReceive();
-    if (!heap_caps_check_integrity_all(true)) Serial.print("\nheap error after CT receive\n");
+    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after CT receive\n");
 
     // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
     if (dataready > datamemory) datamemory = dataready;
 
+    if (!(datamemory & 0x80 ) && WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5 && WIFImode != 2 && esp_timer_get_time() / 1000000 < 180) {
+        // if P1 is not connected,
+        // and we have no wifi
+        // and we are not in the first 5 seconds of startup (to give the existing wifi time to connect)
+        // and we are not already in wifimode 2
+        // and we are not later then the first 180s after startup; perhaps we are not interested in having a wifi connection?
+        // we go to wifimode 2 smartconfig
+        WIFImode = 2;
+        handleWIFImode();
+    }
+
     // Every ~2 seconds send measurement data over websockets to browser(s)
-    if (socketupdate == 20 && ws.count() && WiFi.status() == WL_CONNECTED) {
+    if (socketupdate == 20 && WiFi.status() == WL_CONNECTED) {
 
       // Smart meter measurement?
       if (datamemory & 0x80 ) {
-        snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f",Irms[0], Irms[1], Irms[2]);
-        ws.textAll(buffer);
-        snprintf(buffer, sizeof(buffer), "V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
-        ws.textAll(buffer);
+        for (int x = 0; x < 3; x++) {
+            MainsMeterIrms[x] = Irms[x];
+        }
+        phasesLastUpdate = time(NULL);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",Irms[0],Irms[1],Irms[2]);
         //ws.printfAll_P("V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
 
       // CT measurement  
-      } else if (datamemory & 0x03) { 
-        snprintf(buffer, sizeof(buffer), "I:%3.2f,%3.2f,%3.2f", IrmsCT[0], IrmsCT[1], IrmsCT[2]);
-        ws.textAll(buffer);
+      } else if (datamemory & 0x03) {                                           // always true except when initializing
+        for (int x = 0; x < 3; x++) {
+            MainsMeterIrms[x] = IrmsCT[x];
+        }
+        phasesLastUpdate = time(NULL);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",IrmsCT[0],IrmsCT[1],IrmsCT[2]);
       }
+      else {
+        for (int x = 0; x < 3; x++)
+            MainsMeterIrms[x] = 0;                                              // better send 0 data then incorrect data?
+      }
+      char *URL = NULL;
+      if ((datamemory & 0x80 ) || (datamemory & 0x03)) {                        // we have data
+#if MQTT
+        //publishing to the broker
+        MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", MainsMeterIrms[0] * 10, false, 0);
+        MQTTclient.publish(MQTTprefix + "/MainsCurrentL2", MainsMeterIrms[1] * 10, false, 0);
+        MQTTclient.publish(MQTTprefix + "/MainsCurrentL3", MainsMeterIrms[2] * 10, false, 0);
+#endif
+        if (SmartEVSEHost != "") {                                              // we have a configured wifi host
+            if (SmartEVSEHost.substring(0,4) == "http") {                       // not MQTT, but http[s]
+                asprintf(&URL, "%s/currents?L1=%i&L2=%i&L3=%i", SmartEVSEHost.c_str(), (int) MainsMeterIrms[0] * 10, (int) MainsMeterIrms[1] * 10, (int) MainsMeterIrms[2] * 10); //will be freed
+                HTTPClient httpClient;
+                httpClient.begin(URL);
+                int httpCode = httpClient.POST("");  //Make the request
+
+                // only handle 200/301, fail on everything else
+                if( httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY ) {
+                    _LOG_A("Error on HTTP request (httpCode=%i)\n", httpCode);
+                }
+                httpClient.end();
+            } else {                                                            // MQTT
+#if MQTT
+                //publishing to the SmartEVSE host directly
+                //mosquitto_pub  -h ip-of-mosquitto-server -u username -P password -t 'SmartEVSE-xxxxx/Set/MainsMeter' -m L1:L2:L3
+                //in deci Ampères
+                char *currents;
+                asprintf(&currents, "%i:%i:%i", (int) MainsMeterIrms[0] * 10, (int) MainsMeterIrms[1] * 10, (int) MainsMeterIrms[2] * 10);
+                MQTTclient.publish(SmartEVSEHost + "/Set/MainsMeter", currents, false, 0);
+                FREE(currents);
+#endif
+            }
+        }
+      }
+      FREE(URL);
 
       datamemory = 0;
       socketupdate = 0;
@@ -747,7 +521,7 @@ void P1Task(void * parameter) {
     // keep track of available stack ram
     P1taskram = uxTaskGetStackHighWaterMark( NULL );
 
-    if (!heap_caps_check_integrity_all(true)) Serial.print("\nheap error after printfAll\n");
+    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after printfAll\n");
 
     // delay task for 100mS
     vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -887,14 +661,15 @@ ModbusMessage MBReadFC04(ModbusMessage request) {
   ModbusData[n++] = (uint16_t) (timeinfo.tm_hour << 8) + timeinfo.tm_min;   // hours since midnight	0-23, minutes after the hour 0-59
   ModbusData[n++] = (uint16_t) (timeinfo.tm_mday << 8) + timeinfo.tm_mon;   // day of the month	1-31, months since January 0-11
   ModbusData[n++] = (uint16_t) (timeinfo.tm_year << 8) + timeinfo.tm_wday;  // years since 1900, days since Sunday 0-6
+  IPAddress localIp = WiFi.localIP();
   ModbusData[n++] = (uint16_t) (localIp[0] << 8) + localIp[1];
   ModbusData[n++] = (uint16_t) (localIp[2] << 8) + localIp[3];
   ModbusData[n++] = (uint16_t) (MacId() >> 16);
   ModbusData[n++] = (uint16_t) (MacId() & 0xFFFF);
-  ModbusData[n++] = (uint16_t) (APpassword[7]<<8) + APpassword[6];
-  ModbusData[n++] = (uint16_t) (APpassword[5]<<8) + APpassword[4];
-  ModbusData[n++] = (uint16_t) (APpassword[3]<<8) + APpassword[2];
-  ModbusData[n++] = (uint16_t) (APpassword[1]<<8) + APpassword[0];
+  ModbusData[n++] = 0x0; //(uint16_t) (APpassword[7]<<8) + APpassword[6];
+  ModbusData[n++] = 0x0; //(uint16_t) (APpassword[5]<<8) + APpassword[4];
+  ModbusData[n++] = 0x0; //(uint16_t) (APpassword[3]<<8) + APpassword[2];
+  ModbusData[n++] = 0x0; //(uint16_t) (APpassword[1]<<8) + APpassword[0];
 
   dataready = 0;                                                                // reset dataready and DSMRversion
   DSMRver = 0;
@@ -937,6 +712,7 @@ ModbusMessage MBWriteFC06(ModbusMessage request) {
   } else if (addr == 0x801) {
     // Set WiFimode
     WIFImode = value & 3u;
+    handleWIFImode();
     write_settings();
     return ECHO_RESPONSE;  
   }
@@ -986,52 +762,52 @@ void setup() {
   Serial2.begin(115200, SERIAL_8N1, PIN_RX, -1, true);                          // P1 smartmeter connection, TX pin unused (RX inverted)
   
   while(!Serial); 
-  Serial.print("\nSensorbox 2 powerup\n");
+  _LOG_A("\nSensorbox 2 powerup\n");
 
-	// Initialize SPIFFS
-	if(!SPIFFS.begin(true)){
-		LOG_E("SPIFFS failed! already tried formatting. HALT\n");
+  // Initialize SPIFFS
+  if(!SPIFFS.begin(true)){
+    _LOG_A("SPIFFS failed! already tried formatting. HALT\n");
     while (true) {
       delay(1);
     }
-	}
-	Serial.printf("Total SPIFFS bytes: %u, Bytes used: %u\n",SPIFFS.totalBytes(),SPIFFS.usedBytes());
+  }
+  _LOG_A("Total SPIFFS bytes: %u, Bytes used: %u\n",SPIFFS.totalBytes(),SPIFFS.usedBytes());
 
 
-	// Check if the PIC needs updating..
+  // Check if the PIC needs updating..
   if (Pic18ReadConfigs() == 0x6980) {
-		Serial.printf("PIC18F26K40 found\n");
+    _LOG_A("PIC18F26K40 found\n");
 
-		if (SPIFFS.exists(PICfirmware))	{
-			Serial.printf("%s found on SPIFFS\n", PICfirmware);
-			file = SPIFFS.open(PICfirmware, "r");
-			if (!file) {
-				Serial.println("file open failed\n");
-			} else {
-				ProgramPIC(file);                                                       	// Program PIC
-				file.close();                                                           	// close file after use
-				SPIFFS.remove(PICfirmware);                                             	// erase hexfile, so we only program once
-			}
-		} else Serial.printf("%s -not- found on SPIFFS\n", PICfirmware);
+    if (SPIFFS.exists(PICfirmware))  {
+      _LOG_A("%s found on SPIFFS\n", PICfirmware);
+      file = SPIFFS.open(PICfirmware, "r");
+      if (!file) {
+        _LOG_A("file open failed\n");
+      } else {
+        ProgramPIC(file);                                                         // Program PIC
+        file.close();                                                             // close file after use
+        SPIFFS.remove(PICfirmware);                                               // erase hexfile, so we only program once
+      }
+    } else _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
 
-	} else if (Pic16ReadConfigs() == 0x3043) {
-		Serial.printf("PIC16F1704 found\n");
+  } else if (Pic16ReadConfigs() == 0x3043) {
+    _LOG_A("PIC16F1704 found\n");
     PICfirmware = "/PIC16F1704.hex";
     
-    if (SPIFFS.exists(PICfirmware))	{
-			Serial.printf("%s found on SPIFFS\n", PICfirmware);
-			file = SPIFFS.open(PICfirmware, "r");
-			if (!file) {
-				Serial.println("file open failed\n");
-			} else {
-				ProgramPIC16F(file);                                                      // Program PIC
-				file.close();                                                           	// close file after use
-				SPIFFS.remove(PICfirmware);                                             	// erase hexfile, so we only program once
-			}
-		} else Serial.printf("%s -not- found on SPIFFS\n", PICfirmware);
-  } else Serial.printf("No PIC found, Not possible to do CT measurements!\n");
+    if (SPIFFS.exists(PICfirmware))  {
+      _LOG_A("%s found on SPIFFS\n", PICfirmware);
+      file = SPIFFS.open(PICfirmware, "r");
+      if (!file) {
+        _LOG_A("file open failed\n");
+      } else {
+        ProgramPIC16F(file);                                                      // Program PIC
+        file.close();                                                             // close file after use
+        SPIFFS.remove(PICfirmware);                                               // erase hexfile, so we only program once
+      }
+    } else _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
+  } else _LOG_A("No PIC found, Not possible to do CT measurements!\n");
 
-	pinMode(PIN_PGD, INPUT);
+  pinMode(PIN_PGD, INPUT);
   pinMode(PIN_PGC, OUTPUT);
 
 
@@ -1050,7 +826,7 @@ void setup() {
   // Register worker for address '10', function code 06
   MBserver.registerWorker(10U, WRITE_HOLD_REGISTER, &MBWriteFC06);
   // Start ModbusRTU Node background task
-  MBserver.start();
+  MBserver.begin(Serial1);
   
   
   // Create Task that handles P1 and CT data
@@ -1073,51 +849,149 @@ void setup() {
     NULL                  // Task handle
   );
 
-  // Create Task that setups the network, and the webserver 
-  xTaskCreate(
-    SetupNetworkTask,     // Function that should be called
-    "SetupNetworkTask",   // Name of the task (for debugging)
-    10000,                // Stack size (bytes)
-    NULL,                 // Parameter to pass
-    1,                    // Task priority
-    NULL                  // Task handle
-  );
-
-
-  Serial.print("Configuring WDT...\n");
+  _LOG_A("Configuring WDT...\n");
   esp_task_wdt_init(WDT_TIMEOUT, true);     // Setup watchdog
   esp_task_wdt_add(NULL);                   // add current thread to WDT watch
 
-
-  // We might need some sort of authentication in the future.
-  // Sensorbox 2 (hwver 1.10) have programmed ECDSA-256 keys stored in nvs
-  // Unused for now.
-  if (preferences.begin("KeyStorage", true) == true) {        // readonly
-    uint16_t hwversion = preferences.getUShort("hwversion");   // 0x020A (02 = Sensorbox-2 0A = hwver 1.10)
-    uint32_t serialnr = preferences.getUInt("serialnr");      
-    String ec_private = preferences.getString("ec_private");
-    String ec_public = preferences.getString("ec_public");
-    preferences.end(); 
-//    Serial.printf("hwversion %04x serialnr:%u \n",hwversion, serialnr);
-//    Serial.print(ec_public);
-
-  } else Serial.print("No KeyStorage found in nvs!\n");
-
+  WiFiSetup();
 
 }
 
+
+//make mongoose 7.14 compatible with 7.13
+#define mg_http_match_uri(X,Y) mg_match(X->uri, mg_str(Y), NULL)
+
+// handles URI, returns true if handled, false if not
+bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
+//    if (mg_match(hm->uri, mg_str("/settings"), NULL)) {               // REST API call?
+    if (mg_http_match_uri(hm, "/settings")) {                            // REST API call?
+          if (!memcmp("GET", hm->method.buf, hm->method.len)) {                     // if GET
+/*            String mode = "N/A";
+            int modeId = -1;
+            if(Access_bit == 0)  {
+                mode = "OFF";
+                modeId=0;
+            } else {
+                switch(Mode) {
+                    case MODE_NORMAL: mode = "NORMAL"; modeId=1; break;
+                    case MODE_SOLAR: mode = "SOLAR"; modeId=2; break;
+                    case MODE_SMART: mode = "SMART"; modeId=3; break;
+                }
+            }
+            String backlight = "N/A";
+            switch(BacklightSet) {
+                case 0: backlight = "OFF"; break;
+                case 1: backlight = "ON"; break;
+                case 2: backlight = "DIMMED"; break;
+            }
+            String evstate = StrStateNameWeb[State];
+            String error = getErrorNameWeb(ErrorFlags);
+            int errorId = getErrorId(ErrorFlags);
+
+            if (ErrorFlags & NO_SUN) {
+                evstate += " - " + error;
+                error = "None";
+                errorId = 0;
+            }
+
+            boolean evConnected = pilot != PILOT_12V;                    //when access bit = 1, p.ex. in OFF mode, the STATEs are no longer updated
+*/
+            DynamicJsonDocument doc(1600); // https://arduinojson.org/v6/assistant/
+            doc["version"] = String(VERSION);
+            doc["serialnr"] = serialnr;
+            doc["smartevse_host"] = SmartEVSEHost;
+
+            if(WiFi.isConnected()) {
+                switch(WiFi.status()) {
+                    case WL_NO_SHIELD:          doc["wifi"]["status"] = "WL_NO_SHIELD"; break;
+                    case WL_IDLE_STATUS:        doc["wifi"]["status"] = "WL_IDLE_STATUS"; break;
+                    case WL_NO_SSID_AVAIL:      doc["wifi"]["status"] = "WL_NO_SSID_AVAIL"; break;
+                    case WL_SCAN_COMPLETED:     doc["wifi"]["status"] = "WL_SCAN_COMPLETED"; break;
+                    case WL_CONNECTED:          doc["wifi"]["status"] = "WL_CONNECTED"; break;
+                    case WL_CONNECT_FAILED:     doc["wifi"]["status"] = "WL_CONNECT_FAILED"; break;
+                    case WL_CONNECTION_LOST:    doc["wifi"]["status"] = "WL_CONNECTION_LOST"; break;
+                    case WL_DISCONNECTED:       doc["wifi"]["status"] = "WL_DISCONNECTED"; break;
+                    default:                    doc["wifi"]["status"] = "UNKNOWN"; break;
+                }
+
+                doc["wifi"]["ssid"] = WiFi.SSID();
+                doc["wifi"]["rssi"] = WiFi.RSSI();
+                doc["wifi"]["bssid"] = WiFi.BSSIDstr();
+            }
+
+            // stuff to keep compatibility with SmartEVSE
+            doc["settings"]["mains_meter"] = "Sensorbox";
+            doc["evse"]["temp"] = 0;
+            //doc["evse"]["temp"] = TempEVSE; TODO
+            doc["ev_meter"]["description"] = "Disabled"; //TODO
+            doc["ev_meter"]["currents"]["TOTAL"] = 0; //TODO
+            doc["ev_meter"]["currents"]["L1"] = 0;
+            doc["ev_meter"]["currents"]["L2"] = 0;
+            doc["ev_meter"]["currents"]["L3"] = 0;
+
+
+    #if MQTT
+            doc["mqtt"]["host"] = MQTTHost;
+            doc["mqtt"]["port"] = MQTTPort;
+            doc["mqtt"]["topic_prefix"] = MQTTprefix;
+            doc["mqtt"]["username"] = MQTTuser;
+            doc["mqtt"]["password_set"] = MQTTpassword != "";
+
+            if (MQTTclient.connected) {
+                doc["mqtt"]["status"] = "Connected";
+            } else {
+                doc["mqtt"]["status"] = "Disconnected";
+            }
+    #endif
+  /*
+            doc["ev_meter"]["description"] = EMConfig[EVMeter.Type].Desc;
+            doc["ev_meter"]["address"] = EVMeter.Address;
+            doc["ev_meter"]["import_active_power"] = round((float)EVMeter.PowerMeasured / 100)/10; //in kW, precision 1 decimal
+            doc["ev_meter"]["total_kwh"] = round((float)EVMeter.Energy / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["charged_kwh"] = round((float)EVMeter.EnergyCharged / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["currents"]["TOTAL"] = EVMeter.Irms[0] + EVMeter.Irms[1] + EVMeter.Irms[2];
+            doc["ev_meter"]["currents"]["L1"] = EVMeter.Irms[0];
+            doc["ev_meter"]["currents"]["L2"] = EVMeter.Irms[1];
+            doc["ev_meter"]["currents"]["L3"] = EVMeter.Irms[2];
+            doc["ev_meter"]["import_active_energy"] = round((float)EVMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
+            doc["ev_meter"]["export_active_energy"] = round((float)EVMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
+
+            doc["mains_meter"]["import_active_energy"] = round((float)MainsMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
+            doc["mains_meter"]["export_active_energy"] = round((float)MainsMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
+   */
+            doc["phase_currents"]["TOTAL"] = MainsMeterIrms[0] + MainsMeterIrms[1] + MainsMeterIrms[2];
+            doc["phase_currents"]["L1"] = MainsMeterIrms[0];
+            doc["phase_currents"]["L2"] = MainsMeterIrms[1];
+            doc["phase_currents"]["L3"] = MainsMeterIrms[2];
+            doc["phase_currents"]["last_data_update"] = phasesLastUpdate;
+
+            String json;
+            serializeJson(doc, json);
+            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
+            return true;
+          }
+    }
+    return false;
+}
 
 //
 // This code will run forever
 //
 void loop() {
-  
-  // reset the WDT every second
-  esp_task_wdt_reset();
+    network_loop();
+    static unsigned long lastCheck = 0;
+    if (millis() - lastCheck >= 1000) {
+        lastCheck = millis();
+        //this block is for non-time critical stuff that needs to run approx 1 / second
+        // reset the WDT every second
+        esp_task_wdt_reset();
 
- // Serial.printf("Status: %04x Time: %02u:%02u Date: %02u/%02u/%02u Day:%u ", 
- // WIFImode + (LocalTimeSet << 8), timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year%100, timeinfo.tm_wday);
- // Serial.printf("IP: %u.%u.%u.%u MAC: %08x PW:%s\n", localIp[0], localIp[1], localIp[2], localIp[3] , MacId(), APpassword);  
-
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+        if (shouldReboot) {
+            delay(5000);                                                        //give user some time to read any message on the webserver
+            ESP.restart();
+        }
+        //_LOG_A("Status: %04x Time: %02u:%02u Date: %02u/%02u/%02u Day:%u ", WIFImode + (LocalTimeSet << 8), timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year%100, timeinfo.tm_wday);
+        //_LOG_A("Connected to AP: %s Local IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+    }
+    //vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
