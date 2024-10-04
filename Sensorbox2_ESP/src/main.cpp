@@ -814,8 +814,8 @@ void setup() {
         _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
     }
 
-  } else if (Pic16ReadConfigs() == 0x3043) {
-    _LOG_A("PIC16F1704 found\n");
+  } else if (Pic16ReadConfigs() == 0x3043 || Pic16ReadConfigs() == 0x3055) {
+    _LOG_A("PIC16F1704/5 found\n");
     PICfirmware = "/PIC16F1704.hex";
     
     if (SPIFFS.exists(PICfirmware))  {
