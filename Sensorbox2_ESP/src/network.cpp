@@ -1416,7 +1416,8 @@ void SetupPortalTask(void * parameter) {
     _LOG_V("Waiting for SmartConfig.\n");
     Serial.end();
     Serial.begin(115200, SERIAL_8N1, PIN_RXD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
-    while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED)) {
+    unsigned long configTimer = millis();
+    while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED) && millis() - configTimer < 180000) {
         // Also start Serial CLI for entering AP and password.
         ProvisionCli();
         delay(10);
@@ -1425,14 +1426,18 @@ void SetupPortalTask(void * parameter) {
         
     if (WiFi.status() == WL_CONNECTED) {
         _LOG_V("\nWiFi Connected, IP Address:%s.\n", WiFi.localIP().toString().c_str());
-        WIFImode = 1;
-        write_settings();
+        WIFImode = 1;                                                           // we are already connected so don't call handleWIFImode
+    } else {
+        _LOG_V("\nCould not connect to WiFi, giving up.\n");
+        WIFImode = 0;
+        handleWIFImode();
+    }
+    write_settings();
 #ifndef SENSORBOX_VERSION                                                       //so we are not on a sensorbox but on a smartevse
-        LCDNav = 0;
+    LCDNav = 0;
 #endif
-    }  
 
-    CliState = 0;
+    CliState= 0;
     Serial.end();
     Serial.begin(115200, SERIAL_8N1, PIN_PGD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
     WiFi.stopSmartConfig(); // this makes sure repeated SmartConfig calls are succesfull
