@@ -119,7 +119,9 @@ void write_settings(void) {
     preferences.putUChar("WIFImode", WIFImode);
     preferences.end();
 
-  } else _LOG_A("Can not open preferences!\n");
+  } else {
+      _LOG_A("Can not open preferences!\n");
+  }
 }
 
 
@@ -135,7 +137,9 @@ void read_settings(bool write) {
 
     if (write) write_settings();
 
-  } else _LOG_A("Can not open preferences!\n");
+  } else {
+      _LOG_A("Can not open preferences!\n");
+  }
 }
 
 
@@ -275,7 +279,9 @@ void CTReceive() {
         dataready |= 0x03;
         _LOG_V("\rCT1: %2.1f A CT2: %2.1f A CT3: %2.1f A  ",IrmsCT[0],IrmsCT[1],IrmsCT[2] );
 
-      } else _LOG_A("CRC error in CTdata\n");
+      } else {
+          _LOG_A("CRC error in CTdata\n");
+      }
       
       CTeot = 0;
       CTptr = 0;
@@ -436,11 +442,15 @@ void P1Task(void * parameter) {
   
     // Check if there is new P1 data.
     P1Receive();
-    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after P1 receive\n");
+    if (!heap_caps_check_integrity_all(true)) {
+        _LOG_A("\nheap error after P1 receive\n");
+    }
 
     // Check if there is a new measurement from the PIC (CT measurements)
     CTReceive();
-    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after CT receive\n");
+    if (!heap_caps_check_integrity_all(true)) {
+        _LOG_A("\nheap error after CT receive\n");
+    }
 
     // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
     if (dataready > datamemory) datamemory = dataready;
@@ -523,7 +533,9 @@ void P1Task(void * parameter) {
     // keep track of available stack ram
     P1taskram = uxTaskGetStackHighWaterMark( NULL );
 
-    if (!heap_caps_check_integrity_all(true)) _LOG_A("\nheap error after printfAll\n");
+    if (!heap_caps_check_integrity_all(true)) {
+        _LOG_A("\nheap error after printfAll\n");
+    }
 
     // delay task for 100mS
     vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -792,7 +804,9 @@ void setup() {
         file.close();                                                             // close file after use
         SPIFFS.remove(PICfirmware);                                               // erase hexfile, so we only program once
       }
-    } else _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
+    } else {
+        _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
+    }
 
   } else if (Pic16ReadConfigs() == 0x3043) {
     _LOG_A("PIC16F1704 found\n");
@@ -808,8 +822,12 @@ void setup() {
         file.close();                                                             // close file after use
         SPIFFS.remove(PICfirmware);                                               // erase hexfile, so we only program once
       }
-    } else _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
-  } else _LOG_A("No PIC found, Not possible to do CT measurements!\n");
+    } else {
+        _LOG_A("%s -not- found on SPIFFS\n", PICfirmware);
+    }
+  } else {
+      _LOG_A("No PIC found, Not possible to do CT measurements!\n");
+  }
 
   pinMode(PIN_PGD, INPUT);
   pinMode(PIN_PGC, OUTPUT);
