@@ -447,7 +447,7 @@ void P1Task(void * parameter) {
     }
 
     // Check if there is a new measurement from the PIC (CT measurements)
-    CTReceive();
+    if (WIFImode != 2) CTReceive();
     if (!heap_caps_check_integrity_all(true)) {
         _LOG_A("\nheap error after CT receive\n");
     }

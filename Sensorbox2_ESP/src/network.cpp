@@ -123,11 +123,6 @@ void ProvisionCli() {
 
     } else if (CliState == 4) {
         Serial.println("WiFi credentials stored.");
-        CliState++;
-
-    } else if (CliState == 5) {
-
-        //WiFi.stopSmartConfig();             // Stop SmartConfig //TODO necessary?
         WiFi.mode(WIFI_STA);                // Set Station Mode
         WiFi.begin(Router_SSID, Router_Pass);   // Configure Wifi with credentials
         CliState++;
@@ -1420,7 +1415,7 @@ void SetupPortalTask(void * parameter) {
     while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED) && millis() - configTimer < 180000) {
         // Also start Serial CLI for entering AP and password.
         ProvisionCli();
-        delay(10);
+        delay(100);
     }                       // loop until connected or Wifi setup menu is exited.
     delay(2000);            // give smartConfig time to send provision status back to the users phone.
         
