@@ -85,7 +85,7 @@ static uint8_t CliState = 0;
 void ProvisionCli() {
 
     // SSID and PW for your Router
-    String Router_SSID, Router_Pass;
+    static String Router_SSID, Router_Pass;
     static char CliBuffer[64];
     static uint8_t idx = 0;
     static bool entered = false;
