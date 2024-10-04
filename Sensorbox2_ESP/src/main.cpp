@@ -963,10 +963,10 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
             doc["mains_meter"]["import_active_energy"] = round((float)MainsMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
             doc["mains_meter"]["export_active_energy"] = round((float)MainsMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
    */
-            doc["phase_currents"]["TOTAL"] = MainsMeterIrms[0] + MainsMeterIrms[1] + MainsMeterIrms[2];
-            doc["phase_currents"]["L1"] = MainsMeterIrms[0];
-            doc["phase_currents"]["L2"] = MainsMeterIrms[1];
-            doc["phase_currents"]["L3"] = MainsMeterIrms[2];
+            doc["phase_currents"]["TOTAL"] = (MainsMeterIrms[0] + MainsMeterIrms[1] + MainsMeterIrms[2]) * 10;
+            doc["phase_currents"]["L1"] = MainsMeterIrms[0] * 10;
+            doc["phase_currents"]["L2"] = MainsMeterIrms[1] * 10;
+            doc["phase_currents"]["L3"] = MainsMeterIrms[2] * 10;
             doc["phase_currents"]["last_data_update"] = phasesLastUpdate;
 
             String json;
