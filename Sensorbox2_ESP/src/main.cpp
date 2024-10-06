@@ -97,8 +97,8 @@ uint32_t serialnr;
 unsigned long ModbusTimer=0;
 unsigned char dataready=0, CTcount, DSMRver, IrmsMode = 0;
 unsigned char LedCnt, LedState, LedSeq[3] = {0,0,0};
-float Irms[3], Volts[3], IrmsCT[3];                                           // float is 32 bits
-float MainsMeterIrms[3];                                                      // float is 32 bits
+float Irms[3], Volts[3], IrmsCT[3];                                             // float is 32 bits; current in A
+int16_t MainsMeterIrms[3];                                                      // current in dA (10 * A) !!!
 uint8_t datamemory = 0;
 unsigned char led = 0, Wire = WIRES4 + CW;
 uint16_t blinkram = 0, P1taskram = 0;
@@ -472,7 +472,7 @@ void P1Task(void * parameter) {
       // Smart meter measurement?
       if (datamemory & 0x80 ) {
         for (int x = 0; x < 3; x++) {
-            MainsMeterIrms[x] = Irms[x];
+            MainsMeterIrms[x] = round(Irms[x] * 10);
         }
         phasesLastUpdate = time(NULL);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",Irms[0],Irms[1],Irms[2]);
@@ -481,7 +481,7 @@ void P1Task(void * parameter) {
       // CT measurement  
       } else if (datamemory & 0x03) {                                           // always true except when initializing
         for (int x = 0; x < 3; x++) {
-            MainsMeterIrms[x] = IrmsCT[x];
+            MainsMeterIrms[x] = round(IrmsCT[x] * 10);
         }
         phasesLastUpdate = time(NULL);
         //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",IrmsCT[0],IrmsCT[1],IrmsCT[2]);
@@ -494,13 +494,13 @@ void P1Task(void * parameter) {
       if ((datamemory & 0x80 ) || (datamemory & 0x03)) {                        // we have data
 #if MQTT
         //publishing to the broker
-        MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", MainsMeterIrms[0] * 10, false, 0);
-        MQTTclient.publish(MQTTprefix + "/MainsCurrentL2", MainsMeterIrms[1] * 10, false, 0);
-        MQTTclient.publish(MQTTprefix + "/MainsCurrentL3", MainsMeterIrms[2] * 10, false, 0);
+        MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", MainsMeterIrms[0], false, 0);
+        MQTTclient.publish(MQTTprefix + "/MainsCurrentL2", MainsMeterIrms[1], false, 0);
+        MQTTclient.publish(MQTTprefix + "/MainsCurrentL3", MainsMeterIrms[2], false, 0);
 #endif
         if (SmartEVSEHost != "") {                                              // we have a configured wifi host
             if (SmartEVSEHost.substring(0,4) == "http") {                       // not MQTT, but http[s]
-                asprintf(&URL, "%s/currents?L1=%i&L2=%i&L3=%i", SmartEVSEHost.c_str(), (int) MainsMeterIrms[0] * 10, (int) MainsMeterIrms[1] * 10, (int) MainsMeterIrms[2] * 10); //will be freed
+                asprintf(&URL, "%s/currents?L1=%i&L2=%i&L3=%i", SmartEVSEHost.c_str(), (int) MainsMeterIrms[0], (int) MainsMeterIrms[1], (int) MainsMeterIrms[2]); //will be freed
                 HTTPClient httpClient;
                 httpClient.begin(URL);
                 int httpCode = httpClient.POST("");  //Make the request
@@ -516,7 +516,7 @@ void P1Task(void * parameter) {
                 //mosquitto_pub  -h ip-of-mosquitto-server -u username -P password -t 'SmartEVSE-xxxxx/Set/MainsMeter' -m L1:L2:L3
                 //in deci Ampères
                 char *currents;
-                asprintf(&currents, "%i:%i:%i", (int) MainsMeterIrms[0] * 10, (int) MainsMeterIrms[1] * 10, (int) MainsMeterIrms[2] * 10);
+                asprintf(&currents, "%i:%i:%i", (int) MainsMeterIrms[0], (int) MainsMeterIrms[1], (int) MainsMeterIrms[2]);
                 MQTTclient.publish(SmartEVSEHost + "/Set/MainsMeter", currents, false, 0);
                 FREE(currents);
 #endif
@@ -981,10 +981,10 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
             doc["mains_meter"]["import_active_energy"] = round((float)MainsMeter.Import_active_energy / 100)/10; //in kWh, precision 1 decimal
             doc["mains_meter"]["export_active_energy"] = round((float)MainsMeter.Export_active_energy / 100)/10; //in kWh, precision 1 decimal
    */
-            doc["phase_currents"]["TOTAL"] = (MainsMeterIrms[0] + MainsMeterIrms[1] + MainsMeterIrms[2]) * 10;
-            doc["phase_currents"]["L1"] = MainsMeterIrms[0] * 10;
-            doc["phase_currents"]["L2"] = MainsMeterIrms[1] * 10;
-            doc["phase_currents"]["L3"] = MainsMeterIrms[2] * 10;
+            doc["phase_currents"]["TOTAL"] = (MainsMeterIrms[0] + MainsMeterIrms[1] + MainsMeterIrms[2]);
+            doc["phase_currents"]["L1"] = MainsMeterIrms[0];
+            doc["phase_currents"]["L2"] = MainsMeterIrms[1];
+            doc["phase_currents"]["L3"] = MainsMeterIrms[2];
             doc["phase_currents"]["last_data_update"] = phasesLastUpdate;
 
             String json;
