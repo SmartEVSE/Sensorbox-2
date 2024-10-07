@@ -675,13 +675,13 @@ void RunFirmwareUpdate(void) {
         "FirmwareUpdate",// Name of the task (for debugging)
         4096,           // Stack size (bytes)
         NULL,           // Parameter to pass
-        3,              // Task priority - high
+        3,              // Task priority - medium
         NULL            // Task handle
     );
 }
 
 
-void setTimeZone(void) {
+void setTimeZone(void * parameter) {
     HTTPClient httpClient;
     // lookup current timezone
     httpClient.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -747,6 +747,7 @@ void setTimeZone(void) {
     }
     httpClient.end();
     FREE(URL);
+    vTaskDelete(NULL);                                                          //end this task so it will not take up resources
 }
 
 
@@ -1283,7 +1284,14 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             sprintf(dns4url, "udp://%s:53", WiFi.dnsIP().toString().c_str());
             mgr.dns4.url = dns4url;
             if (TZinfo == "") {
-                setTimeZone();
+                xTaskCreate(
+                    setTimeZone, // Function that should be called
+                    "setTimeZone",// Name of the task (for debugging)
+                    4096,           // Stack size (bytes)
+                    NULL,           // Parameter to pass
+                    1,              // Task priority - low
+                    NULL            // Task handle
+                );
             }
 
             // Start the mDNS responder so that the SmartEVSE can be accessed using a local hostame: http://SmartEVSE-xxxxxx.local
@@ -1422,7 +1430,7 @@ void handleWIFImode() {
             "SetupPortalTask",   // Name of the task (for debugging)
             10000,                // Stack size (bytes)                              // printf needs atleast 1kb
             NULL,                 // Parameter to pass
-            1,                    // Task priority
+            3,                    // Task priority - medium
             NULL                  // Task handleCTReceive
         );
     }
