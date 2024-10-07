@@ -39,7 +39,6 @@ uint16_t MQTTPort;
 mg_timer *MQTTtimer;
 uint8_t lastMqttUpdate = 0;
 #endif
-String SmartEVSEHost = "";
 
 mg_connection *HttpListener80, *HttpListener443;
 
@@ -48,7 +47,7 @@ bool shouldReboot = false;
 extern void write_settings(void);
 extern void StopwebServer(void); //TODO or move over to network.cpp?
 extern void StartwebServer(void); //TODO or move over to network.cpp?
-extern bool handle_URI(struct mg_connection *c, struct mg_http_message *hm);
+extern bool handle_URI(struct mg_connection *c, struct mg_http_message *hm,  webServerRequest* request);
 
 extern uint32_t serialnr;
 extern Preferences preferences;
@@ -751,20 +750,6 @@ void setTimeZone(void) {
 }
 
 
-// wrapper so hasParam and getParam still work
-class webServerRequest {
-private:
-    struct mg_http_message *hm_internal;
-    String _value;
-    char temp[64];
-
-public:
-    void setMessage(struct mg_http_message *hm);
-    bool hasParam(const char *param);
-    webServerRequest* getParam(const char *param); // Return pointer to self
-    const String& value(); // Return the string value
-};
-
 void webServerRequest::setMessage(struct mg_http_message *hm) {
     hm_internal = hm;
 }
@@ -911,7 +896,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
 //make mongoose 7.14 compatible with 7.13
 #define mg_http_match_uri(X,Y) mg_match(X->uri, mg_str(Y), NULL)
     // handles URI and response, returns true if handled, false if not
-    if (!handle_URI(c, hm)) {
+    if (!handle_URI(c, hm, request)) {
         if (mg_match(hm->uri, mg_str("/erasesettings"), NULL)) {
             mg_http_reply(c, 200, "Content-Type: text/plain\r\n", "Erasing settings, rebooting");
             if ( preferences.begin("settings", false) ) {         // our own settings
@@ -1228,17 +1213,6 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
                 }
             }
 #endif
-            if (request->hasParam("upload_update") && request->getParam("upload_update")->value().toInt() == 1) {
-
-                if(request->hasParam("smartevse_host")) {
-                    SmartEVSEHost = request->getParam("smartevse_host")->value();
-                    doc["smartevse_host"] = SmartEVSEHost;
-                    if (preferences.begin("settings", false) ) {
-                        preferences.putString("SmartEVSEHost", SmartEVSEHost);
-                        preferences.end();
-                    }
-                }
-            }
             String json;
             serializeJson(doc, json);
             mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
@@ -1520,7 +1494,6 @@ void WiFiSetup(void) {
     //firmwareUpdateTimer = random(FW_UPDATE_DELAY, 120); // DINGO TODO debug max 2 minutes
 
     if (preferences.begin("settings", false) ) {
-        SmartEVSEHost = preferences.getString("SmartEVSEHost", "");
 #if MQTT == 0
         preferences.end();
     }

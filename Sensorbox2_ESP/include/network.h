@@ -52,7 +52,6 @@
 #include "mqtt_client.h"
 #endif
 
-extern String SmartEVSEHost;
 extern bool shouldReboot;
 
 #if MQTT
@@ -87,6 +86,20 @@ public:
 #else
     esp_mqtt_client_handle_t client;
 #endif
+};
+
+// wrapper so hasParam and getParam still work
+class webServerRequest {
+private:
+    struct mg_http_message *hm_internal;
+    String _value;
+    char temp[64];
+
+public:
+    void setMessage(struct mg_http_message *hm);
+    bool hasParam(const char *param);
+    webServerRequest* getParam(const char *param); // Return pointer to self
+    const String& value(); // Return the string value
 };
 
 extern MQTTclient_t MQTTclient;

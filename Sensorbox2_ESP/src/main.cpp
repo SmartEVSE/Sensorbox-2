@@ -76,6 +76,7 @@ extern String TZinfo;
 //String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
 extern String APhostname;
 extern void network_loop(void);
+extern webServerRequest* request;
 
 // Create a ModbusRTU server and client instance on Serial1 
 ModbusServerRTU MBserver(2000, ToggleRS485);                        // TCP timeout set to 2000 ms
@@ -93,6 +94,7 @@ uint16_t ModbusData[50];    // 50 registers
 
 extern uint8_t WIFImode;
 uint32_t serialnr;
+String SmartEVSEHost = "";
 
 unsigned long ModbusTimer=0;
 unsigned char dataready=0, CTcount, DSMRver, IrmsMode = 0;
@@ -104,6 +106,54 @@ unsigned char led = 0, Wire = WIRES4 + CW;
 uint16_t blinkram = 0, P1taskram = 0;
 extern bool LocalTimeSet;
 int phasesLastUpdate = 0;
+
+
+
+// Every ~2 seconds send measurement data to APIs
+void Timer2S(void * parameter) {
+    while (true) {
+        if (WiFi.status() == WL_CONNECTED) {
+          if ((datamemory & 0x80 ) || (datamemory & 0x03)) {                        // we have data
+    #if MQTT
+            //publishing to the broker
+            MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", MainsMeterIrms[0], false, 0);
+            MQTTclient.publish(MQTTprefix + "/MainsCurrentL2", MainsMeterIrms[1], false, 0);
+            MQTTclient.publish(MQTTprefix + "/MainsCurrentL3", MainsMeterIrms[2], false, 0);
+    #endif
+            if (SmartEVSEHost != "") {                                              // we have a configured wifi host
+                if (SmartEVSEHost.substring(0,4) == "http") {                       // not MQTT, but http[s]
+                    char *URL = NULL;
+                    asprintf(&URL, "%s/currents?L1=%i&L2=%i&L3=%i", SmartEVSEHost.c_str(), (int) MainsMeterIrms[0], (int) MainsMeterIrms[1], (int) MainsMeterIrms[2]); //will be freed
+                    HTTPClient httpClient;
+                    httpClient.begin(URL);
+                    httpClient.addHeader("Content-Length", "0");
+                    int httpCode = httpClient.POST("");  //Make the request
+
+                    // only handle 200/301, fail on everything else
+                    if( httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY ) {
+                        _LOG_A("Error on HTTP request (httpCode=%i)\n", httpCode);
+                    }
+                    httpClient.end();
+                    FREE(URL);
+                } else {                                                            // MQTT
+    #if MQTT
+                    //publishing to the SmartEVSE host directly
+                    //mosquitto_pub  -h ip-of-mosquitto-server -u username -P password -t 'SmartEVSE-xxxxx/Set/MainsMeter' -m L1:L2:L3
+                    //in deci Ampères
+                    char *currents;
+                    asprintf(&currents, "%i:%i:%i", (int) MainsMeterIrms[0], (int) MainsMeterIrms[1], (int) MainsMeterIrms[2]);
+                    MQTTclient.publish(SmartEVSEHost + "/Set/MainsMeter", currents, false, 0);
+                    FREE(currents);
+    #endif
+                }
+            }
+          }
+
+          datamemory = 0;
+        }
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+}
 
 // ------------------------------------------------ Settings -----------------------------------------------------
 // 
@@ -128,6 +178,7 @@ void write_settings(void) {
 void read_settings(bool write) {    
   if (preferences.begin("settings", false) == true) {
     WIFImode = preferences.getUChar("WIFImode", WIFI_MODE);
+    SmartEVSEHost = preferences.getString("SmartEVSEHost", "");
     TZinfo = preferences.getString("TimezoneInfo","");
     if (TZinfo != "") {
         setenv("TZ",TZinfo.c_str(),1);
@@ -259,6 +310,11 @@ void CTReceive() {
           IrmsMode = 0;      
         }
 
+        for (int x = 0; x < 3; x++) {
+            MainsMeterIrms[x] = round(IrmsCT[x] * 10);
+        }
+        phasesLastUpdate = time(NULL);
+
         // very small values will be displayed as 0.0A
         for (x=0; x<3 ;x++) {
           if ((IrmsCT[x] > -0.05) && (IrmsCT[x] < 0.05)) IrmsCT[x] = 0.0;
@@ -359,6 +415,10 @@ void P1Extract() {
   Irms[1] = (L2Power-L2PowerReturn)/Volts[1];
   Irms[2] = (L3Power-L3PowerReturn)/Volts[2];
   
+  for (int x = 0; x < 3; x++) {
+    MainsMeterIrms[x] = round(Irms[x] * 10);
+  }
+  phasesLastUpdate = time(NULL);
 
   if (DSMRver >= 50) dataready |= 0x80;                                     	// P1 dataready
   else dataready |= 0x40;                                                   	// DSMR version not 5.0 !!
@@ -436,8 +496,6 @@ void P1Receive() {
 // Will call P1Receive and CTreceive every 100ms 
 //
 void P1Task(void * parameter) {
-  uint8_t socketupdate = 0;
-
   while(1) {
   
     // Check if there is new P1 data.
@@ -466,70 +524,6 @@ void P1Task(void * parameter) {
         handleWIFImode();
     }
 
-    // Every ~2 seconds send measurement data over websockets to browser(s)
-    if (socketupdate == 20 && WiFi.status() == WL_CONNECTED) {
-
-      // Smart meter measurement?
-      if (datamemory & 0x80 ) {
-        for (int x = 0; x < 3; x++) {
-            MainsMeterIrms[x] = round(Irms[x] * 10);
-        }
-        phasesLastUpdate = time(NULL);
-        //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",Irms[0],Irms[1],Irms[2]);
-        //ws.printfAll_P("V:%3d,%3d,%3d",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
-
-      // CT measurement  
-      } else if (datamemory & 0x03) {                                           // always true except when initializing
-        for (int x = 0; x < 3; x++) {
-            MainsMeterIrms[x] = round(IrmsCT[x] * 10);
-        }
-        phasesLastUpdate = time(NULL);
-        //ws.printfAll_P("I:%3.2f,%3.2f,%3.2f",IrmsCT[0],IrmsCT[1],IrmsCT[2]);
-      }
-      else {
-        for (int x = 0; x < 3; x++)
-            MainsMeterIrms[x] = 0;                                              // better send 0 data then incorrect data?
-      }
-      char *URL = NULL;
-      if ((datamemory & 0x80 ) || (datamemory & 0x03)) {                        // we have data
-#if MQTT
-        //publishing to the broker
-        MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", MainsMeterIrms[0], false, 0);
-        MQTTclient.publish(MQTTprefix + "/MainsCurrentL2", MainsMeterIrms[1], false, 0);
-        MQTTclient.publish(MQTTprefix + "/MainsCurrentL3", MainsMeterIrms[2], false, 0);
-#endif
-        if (SmartEVSEHost != "") {                                              // we have a configured wifi host
-            if (SmartEVSEHost.substring(0,4) == "http") {                       // not MQTT, but http[s]
-                asprintf(&URL, "%s/currents?L1=%i&L2=%i&L3=%i", SmartEVSEHost.c_str(), (int) MainsMeterIrms[0], (int) MainsMeterIrms[1], (int) MainsMeterIrms[2]); //will be freed
-                HTTPClient httpClient;
-                httpClient.begin(URL);
-                int httpCode = httpClient.POST("");  //Make the request
-
-                // only handle 200/301, fail on everything else
-                if( httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY ) {
-                    _LOG_A("Error on HTTP request (httpCode=%i)\n", httpCode);
-                }
-                httpClient.end();
-            } else {                                                            // MQTT
-#if MQTT
-                //publishing to the SmartEVSE host directly
-                //mosquitto_pub  -h ip-of-mosquitto-server -u username -P password -t 'SmartEVSE-xxxxx/Set/MainsMeter' -m L1:L2:L3
-                //in deci Ampères
-                char *currents;
-                asprintf(&currents, "%i:%i:%i", (int) MainsMeterIrms[0], (int) MainsMeterIrms[1], (int) MainsMeterIrms[2]);
-                MQTTclient.publish(SmartEVSEHost + "/Set/MainsMeter", currents, false, 0);
-                FREE(currents);
-#endif
-            }
-        }
-      }
-      FREE(URL);
-
-      datamemory = 0;
-      socketupdate = 0;
-    }
-
-    socketupdate++;
     // keep track of available stack ram
     P1taskram = uxTaskGetStackHighWaterMark( NULL );
 
@@ -871,6 +865,16 @@ void setup() {
     NULL                  // Task handle
   );
 
+// Create Task Second Timer (2000ms)
+  xTaskCreate(
+    Timer2S,        // Function that should be called
+    "Timer2S",      // Name of the task (for debugging)
+    8000,           // Stack size (bytes)
+    NULL,           // Parameter to pass
+    3,              // Task priority - medium
+    NULL  // Task handle
+  );
+
   _LOG_A("Configuring WDT...\n");
   esp_task_wdt_init(WDT_TIMEOUT, true);     // Setup watchdog
   esp_task_wdt_add(NULL);                   // add current thread to WDT watch
@@ -884,7 +888,7 @@ void setup() {
 #define mg_http_match_uri(X,Y) mg_match(X->uri, mg_str(Y), NULL)
 
 // handles URI, returns true if handled, false if not
-bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
+bool handle_URI(struct mg_connection *c, struct mg_http_message *hm,  webServerRequest* request) {
 //    if (mg_match(hm->uri, mg_str("/settings"), NULL)) {               // REST API call?
     if (mg_http_match_uri(hm, "/settings")) {                            // REST API call?
           if (!memcmp("GET", hm->method.buf, hm->method.len)) {                     // if GET
@@ -991,6 +995,23 @@ bool handle_URI(struct mg_connection *c, struct mg_http_message *hm) {
             serializeJson(doc, json);
             mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\n", json.c_str());    // Yes. Respond JSON
             return true;
+          } else if (!memcmp("POST", hm->method.buf, hm->method.len)) {
+            if (request->hasParam("upload_update") && request->getParam("upload_update")->value().toInt() == 1) {
+
+                if(request->hasParam("smartevse_host")) {
+                    SmartEVSEHost = request->getParam("smartevse_host")->value();
+                    DynamicJsonDocument doc(64);
+                    doc["smartevse_host"] = SmartEVSEHost;
+                    if (preferences.begin("settings", false) ) {
+                        preferences.putString("SmartEVSEHost", SmartEVSEHost);
+                        preferences.end();
+                    }
+                    String json;
+                    serializeJson(doc, json);
+                    mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
+                    return true;
+                }
+            }
           }
     }
     return false;
