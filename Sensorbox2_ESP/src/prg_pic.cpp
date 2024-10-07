@@ -211,14 +211,13 @@ uint16_t Pic18ReadConfigs() {
 
 uint8_t ProgramPIC(File file) {
 
-  uint32_t filesize, filepointer=0;
+  uint32_t filepointer=0;
   uint8_t n, p, checksum, bytecount, recordtype, startoffset;
   uint16_t fileaddress, configdata, FlashADR_MSB=0, PrevFlashADR=0;
   char filebuffer[90];                                                          // holds one row of the hex file
   char programbuffer[WRITE_LATCHES];                                            // block of flash data for the PIC
 
-  filesize = file.size();
-  _LOG_A("filesize %u bytes\n", filesize);
+  _LOG_A("filesize %u bytes\n", file.size());
 
   EnterLVPmode();
   CmdLoadPCAddress(ADR_CONFIG);         // Program Flash Memory
@@ -563,8 +562,7 @@ void ProgramPIC16F(File file) {
 
     // CODE
     uint32_t address = 0;
-    uint32_t filesize = file.size();
-    _LOG_A("filesize %u bytes\n", filesize);
+    _LOG_A("filesize %u bytes\n", file.size());
     
 //    webSocket.sendTXT(num, "pFlashing...");
     uint16_t offset = 0;
