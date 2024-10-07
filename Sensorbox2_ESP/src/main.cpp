@@ -851,7 +851,7 @@ void setup() {
     "P1Task",             // Name of the task (for debugging)
     3000,                 // Stack size (bytes) 
     NULL,                 // Parameter to pass
-    1,                    // Task priority
+    5,                    // Task priority - high
     NULL                  // Task handle
   );
 
@@ -861,7 +861,7 @@ void setup() {
     "BlinkLed",           // Name of the task (for debugging)
     2000,                 // Stack size (bytes)
     NULL,                 // Parameter to pass
-    1,                    // Task priority
+    1,                    // Task priority - low
     NULL                  // Task handle
   );
 
@@ -869,9 +869,9 @@ void setup() {
   xTaskCreate(
     Timer2S,        // Function that should be called
     "Timer2S",      // Name of the task (for debugging)
-    8000,           // Stack size (bytes)
+    4096,           // Stack size (bytes)
     NULL,           // Parameter to pass
-    3,              // Task priority - medium
+    4,              // Task priority - medium/high
     NULL  // Task handle
   );
 
