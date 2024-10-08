@@ -76,6 +76,8 @@ public:
         default_opts.qos = 0;
         default_opts.retain = false;
     }
+#else
+    void connect(void);
 #endif
     void publish(const String &topic, const int32_t &payload, bool retained, int qos) { publish(topic, String(payload), retained, qos); };
     void publish(const String &topic, const String &payload, bool retained, int qos);
