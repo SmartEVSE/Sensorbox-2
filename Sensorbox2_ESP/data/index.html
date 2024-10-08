@@ -344,11 +344,16 @@
                     }
                     function configureUpload() {
                         var smartevse_host=$('#smartevse_host').val();
+                        var mqtt_host=$('#mqtt_host').val();
+
                         if (smartevse_host == "") {
                             smartevse_host = "%00";
                         }
 
                         if (smartevse_host) {
+                            if (smartevse_host.substring(0,4) != "http" && mqtt_host == "") {
+                                alert("Do not forget to configure your MQTT broker (below) for this MQTT topic to work!")
+                            }
                             $.post( "/settings?upload_update=1&smartevse_host=" + smartevse_host);
                             alert('Settings applied');
                             toggleUploadEdit();
