@@ -81,8 +81,7 @@ bool isValidInput(String input) {
 
 
 static uint8_t CliState = 0;
-void ProvisionCli() {
-
+void ProvisionCli(HardwareSerial &s) {
     // SSID and PW for your Router
     static String Router_SSID, Router_Pass;
     static char CliBuffer[64];
@@ -91,14 +90,14 @@ void ProvisionCli() {
     char ch;
 
     if (CliState == 0) {
-        Serial.println("Enter WiFi access point name:");
+        s.println("Enter WiFi access point name:");
         CliState++;
 
     } else if (CliState == 1 && entered) {
         Router_SSID = String(CliBuffer);
         Router_SSID.trim();
         if (!isValidInput(Router_SSID)) {
-            Serial.println("Invalid characters in SSID.");
+            s.println("Invalid characters in SSID.");
             Router_SSID = "";
             CliState = 0;
         } else CliState++;              // All OK, now request password.
@@ -106,14 +105,14 @@ void ProvisionCli() {
         entered = false;
 
     } else if (CliState == 2) {
-        Serial.println("Enter WiFi password:");
+        s.println("Enter WiFi password:");
         CliState++;
 
     } else if (CliState == 3 && entered) {
         Router_Pass = String(CliBuffer);
         Router_Pass.trim();
         if (idx < 8) {
-            Serial.println("Password should be min 8 characters.");
+            s.println("Password should be min 8 characters.");
             Router_Pass = "";
             CliState = 2;
         } else CliState++;             // All OK
@@ -121,7 +120,7 @@ void ProvisionCli() {
         entered = false;
 
     } else if (CliState == 4) {
-        Serial.println("WiFi credentials stored.");
+        s.println("WiFi credentials stored.");
         WiFi.mode(WIFI_STA);                // Set Station Mode
         WiFi.begin(Router_SSID, Router_Pass);   // Configure Wifi with credentials
         CliState++;
@@ -129,12 +128,12 @@ void ProvisionCli() {
 
 
     // read input, and store in buffer until we read a \n
-    while (Serial.available()) {
-        ch = Serial.read();
+    while (s.available()) {
+        ch = s.read();
 
         // When entering a password, replace last character with a *
-        if (CliState == 3 && idx) Serial.printf("\b*");
-        Serial.print(ch);
+        if (CliState == 3 && idx) s.printf("\b*");
+        s.print(ch);
 
         // check for CR/LF, and make sure the contents of the buffer is atleast 1 character
         if (ch == '\n' || ch == '\r') {
@@ -145,7 +144,7 @@ void ProvisionCli() {
         } else if (idx < 63) {              // Store in buffer
             if (ch == '\b' && idx) {
                 idx--;
-                Serial.print(" \b");        // erase character from terminal
+                s.print(" \b");        // erase character from terminal
             } else {
                 CliBuffer[idx++] = ch;
             }
@@ -1386,6 +1385,10 @@ void timeSyncCallback(struct timeval *tv)
 
 
 void SetupPortalTask(void * parameter) {
+#ifdef SENSORBOX_VERSION
+    HardwareSerial *s1 = *((HardwareSerial **)parameter);
+    HardwareSerial &s = *s1;
+#endif
     _LOG_A("Start Portal...\n");
     WiFi.disconnect(true);
 
@@ -1408,12 +1411,14 @@ void SetupPortalTask(void * parameter) {
  
     //Wait for SmartConfig packet from mobile.
     _LOG_V("Waiting for SmartConfig.\n");
-    Serial.end();
-    Serial.begin(115200, SERIAL_8N1, PIN_RXD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
+#ifdef SENSORBOX_VERSION
+    s.end();
+    s.begin(115200, SERIAL_8N1, PIN_RXD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
+#endif
     unsigned long configTimer = millis();
     while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED) && millis() - configTimer < 180000) {
         // Also start Serial CLI for entering AP and password.
-        ProvisionCli();
+        ProvisionCli(s);
         delay(100);
     }                       // loop until connected or Wifi setup menu is exited.
     delay(2000);            // give smartConfig time to send provision status back to the users phone.
@@ -1427,26 +1432,31 @@ void SetupPortalTask(void * parameter) {
         handleWIFImode();
     }
     write_settings();
+    CliState= 0;
 #ifndef SENSORBOX_VERSION                                                       //so we are not on a sensorbox but on a smartevse
     LCDNav = 0;
+#else
+    s.end();
+    if (s == Serial2) {
+        Serial2.setRxBufferSize(2048);                                                // Important! first increase buffer, then setup Uart2
+        Serial2.begin(115200, SERIAL_8N1, PIN_RX, -1, true);
+        Serial.begin(115200, SERIAL_8N1, PIN_PGD, PIN_TXD, false);
+    } else
+        s.begin(115200, SERIAL_8N1, PIN_PGD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
 #endif
-
-    CliState= 0;
-    Serial.end();
-    Serial.begin(115200, SERIAL_8N1, PIN_PGD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB
     WiFi.stopSmartConfig(); // this makes sure repeated SmartConfig calls are succesfull
     vTaskDelete(NULL);                                                          //end this task so it will not take up resources
 }
 
 
-void handleWIFImode() {
+void handleWIFImode(HardwareSerial *s) {
     if (WIFImode == 2 && WiFi.getMode() != WIFI_AP_STA) {
         //now start the portal in the background, so other tasks keep running
         xTaskCreate(
             SetupPortalTask,     // Function that should be called
             "SetupPortalTask",   // Name of the task (for debugging)
             10000,                // Stack size (bytes)                              // printf needs atleast 1kb
-            NULL,                 // Parameter to pass
+            (void *) &s,          // Parameter: which serial interface to use for ProvisionCli
             3,                    // Task priority - medium
             NULL                  // Task handleCTReceive
         );

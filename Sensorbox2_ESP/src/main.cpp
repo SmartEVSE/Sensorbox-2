@@ -490,6 +490,8 @@ void P1Receive() {
   }
 }
 
+bool blockP1 = false;
+bool blockCT = false;
 
 // ----------------------------------------------------------------------------------------------------------------
 // Task that handles incoming P1 and CT data
@@ -499,13 +501,13 @@ void P1Task(void * parameter) {
   while(1) {
   
     // Check if there is new P1 data.
-    P1Receive();
+    if (!blockP1) P1Receive();
     if (!heap_caps_check_integrity_all(true)) {
         _LOG_A("\nheap error after P1 receive\n");
     }
 
     // Check if there is a new measurement from the PIC (CT measurements)
-    if (WIFImode != 2) CTReceive();
+    if (!blockCT) CTReceive();
     if (!heap_caps_check_integrity_all(true)) {
         _LOG_A("\nheap error after CT receive\n");
     }
@@ -513,15 +515,25 @@ void P1Task(void * parameter) {
     // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
     if (dataready > datamemory) datamemory = dataready;
 
-    if (!(datamemory & 0x80 ) && WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5 && WIFImode != 2 && esp_timer_get_time() / 1000000 < 180) {
-        // if P1 is not connected,
-        // and we have no wifi
-        // and we are not in the first 5 seconds of startup (to give the existing wifi time to connect)
+    if (WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5 && WIFImode != 2 && esp_timer_get_time() / 1000000 < 180) {
+        // if we have no wifi
+        // and we are not in the first 5 seconds of startup (to give the existing wifi time to connect and P1 data to be entered)
         // and we are not already in wifimode 2
         // and we are not later then the first 180s after startup; perhaps we are not interested in having a wifi connection?
         // we go to wifimode 2 smartconfig
         WIFImode = 2;
-        handleWIFImode();
+        if (datamemory & 0x80 ) {
+            handleWIFImode(&Serial);                                             // P1 data comes in so Serial0 is available
+            blockCT = true;
+        } else {
+            handleWIFImode(&Serial2);
+            blockP1 = true;
+        }
+    }
+
+    if (WIFImode != 2) {
+        blockCT = false;
+        blockP1 = false;
     }
 
     // keep track of available stack ram

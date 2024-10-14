@@ -117,7 +117,7 @@ extern MQTTclient_t MQTTclient;
 #endif
 
 extern void WiFiSetup(void);
-extern void handleWIFImode(void);
+extern void handleWIFImode(HardwareSerial *s = &Serial);
 
 #if DBG == 0
 //used to steer RemoteDebug
