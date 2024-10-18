@@ -743,7 +743,7 @@ void setTimeZone(void * parameter) {
     if( httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY ) {
         _LOG_A("Error on HTTP request (httpCode=%i)\n", httpCode);
         httpClient.end();
-        return;
+        vTaskDelete(NULL);                                                          //end this task so it will not take up resources
     }
 
     // The filter: it contains "true" for each value we want to keep
@@ -754,12 +754,12 @@ void setTimeZone(void * parameter) {
     httpClient.end();
     if (error) {
         _LOG_A("deserializeJson() failed: %s\n", error.c_str());
-        return;
+        vTaskDelete(NULL);                                                          //end this task so it will not take up resources
     }
     String tzname = doc2["timezone"];
     if (tzname == "") {
         _LOG_A("Could not detect Timezone.\n");
-        return;
+        vTaskDelete(NULL);                                                          //end this task so it will not take up resources
     }
     _LOG_A("Timezone detected: tz=%s.\n", tzname.c_str());
 
@@ -777,7 +777,7 @@ void setTimeZone(void * parameter) {
         _LOG_A("Error on HTTP request (httpCode=%i)\n", httpCode);
         httpClient.end();
         FREE(URL);
-        return;
+        vTaskDelete(NULL);                                                          //end this task so it will not take up resources
     }
 
     stream = httpClient.getStreamPtr();
