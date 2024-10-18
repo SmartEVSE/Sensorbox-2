@@ -912,7 +912,6 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
     // handles URI and response, returns true if handled, false if not
     if (!handle_URI(c, hm, request)) {
         if (mg_match(hm->uri, mg_str("/erasesettings"), NULL)) {
-            mg_http_reply(c, 200, "Content-Type: text/plain\r\n", "Erasing settings, rebooting");
             if ( preferences.begin("settings", false) ) {         // our own settings
               preferences.clear();
               preferences.end();
@@ -921,7 +920,8 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
               preferences.clear();
               preferences.end();       
             }
-            ESP.restart();
+            shouldReboot = true;
+            mg_http_reply(c, 200, "Content-Type: text/plain\r\n", "Erasing settings, rebooting");
         } else if (mg_http_match_uri(hm, "/autoupdate")) {
             char owner[40];
             char buf[8];
