@@ -1170,14 +1170,8 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
             mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
     
     */    } else if (mg_http_match_uri(hm, "/reboot") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-            DynamicJsonDocument doc(20);
-    
-            ESP.restart();
-            doc["reboot"] = true;
-    
-            String json;
-            serializeJson(doc, json);
-            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
+            shouldReboot = true;
+            mg_http_reply(c, 200, "", "Rebooting....");
           } else if (mg_http_match_uri(hm, "/settings") && !memcmp("POST", hm->method.buf, hm->method.len)) {
             DynamicJsonDocument doc(64);
 #if MQTT
