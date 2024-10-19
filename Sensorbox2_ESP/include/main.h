@@ -1,8 +1,8 @@
 
 #define SENSORBOX_VERSION 20                                                    // 2 LSB should be 0, as these are WIRE settings
-#define SENSORBOX_SWVER 1                                                       // 0 = Original software
+#define SENSORBOX_SWVER 2                                                       // 0 = Original software
                                                                                 // 1 = Supports extra modbus registers (Time, IP, Hostname etc)       
-
+                                                                                // 2 = Software version 2.1.0
 #define WDT_TIMEOUT 3                                                           // 3 seconds WDT timeout
 
 #define PIN_LED_GREEN 32
