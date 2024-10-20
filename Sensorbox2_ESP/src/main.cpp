@@ -65,7 +65,7 @@
 #include "time.h"
 
 #include "main.h"
-#include "radix.h"
+#include "utils.h"
 #include "prg_pic.h"
 #include <SPI.h>
 #include <HTTPClient.h>
@@ -93,7 +93,6 @@ uint8_t P1data[2000];
 uint16_t ModbusData[50];    // 50 registers
 
 extern uint8_t WIFImode;
-uint32_t serialnr;
 String SmartEVSEHost = "";
 
 unsigned long ModbusTimer=0;
@@ -895,6 +894,72 @@ void setup() {
 
 }
 
+
+#if MQTT
+void mqtt_receive_callback(const String topic, const String payload) {
+    // Make sure MQTT updates directly to prevent debounces
+    lastMqttUpdate = 10;
+}
+
+
+void SetupMQTTClient() {
+    // Set up subscriptions
+    MQTTclient.subscribe(MQTTprefix + "/Set/#",1);
+    MQTTclient.publish(MQTTprefix+"/connected", "online", true, 0);
+
+    //publish MQTT discovery topics
+    //we need something to make all this JSON stuff readable, without doing all this assign and serialize stuff
+#define jsn(x, y) String(R"(")") + x + R"(" : ")" + y + R"(")"
+    //jsn(device_class, current) expands to:
+    // R"("device_class" : "current")"
+
+#define jsna(x, y) String(R"(, )") + jsn(x, y)
+    //json add expansion, same as above but now with a comma prepended
+
+    //first all device stuff:
+    const String device_payload = String(R"("device": {)") + jsn("model","SmartEVSE v3") + jsna("identifiers", MQTTprefix) + jsna("name", MQTTprefix) + jsna("manufacturer","Stegen") + jsna("configuration_url", "http://" + WiFi.localIP().toString().c_str()) + jsna("sw_version", String(VERSION)) + "}";
+    //a device SmartEVSE-1001 consists of multiple entities, and an entity can be in the domains sensor, number, select etc.
+    String entity_suffix, entity_name, optional_payload;
+
+    //some self-updating variables here:
+#define entity_id String(MQTTprefix + "-" + entity_suffix)
+#define entity_path String(MQTTprefix + "/" + entity_suffix)
+#define entity_name(x) entity_name = x; entity_suffix = entity_name; entity_suffix.replace(" ", "");
+
+    //create template to announce an entity in it's own domain:
+#define announce(x, entity_domain) entity_name(x); \
+    MQTTclient.publish("homeassistant/" + String(entity_domain) + "/" + entity_id + "/config", \
+     "{" \
+        + jsn("name", entity_name) \
+        + jsna("object_id", entity_id) \
+        + jsna("unique_id", entity_id) \
+        + jsna("state_topic", entity_path) \
+        + jsna("availability_topic",String(MQTTprefix+"/connected")) \
+        + ", " + device_payload + optional_payload \
+        + "}", \
+    true, 0); // Retain + QoS 0
+
+    //set the parameters for and announce sensors with device class 'current':
+    optional_payload = jsna("device_class","current") + jsna("unit_of_measurement","A") + jsna("value_template", R"({{ value | int / 10 }})");
+//    if (MainsMeter.Type) {
+        announce("Mains Current L1", "sensor");
+        announce("Mains Current L2", "sensor");
+        announce("Mains Current L3", "sensor");
+//    }
+
+    //set the parameters for and announce diagnostic sensor entities:
+    optional_payload = jsna("entity_category","diagnostic");
+    announce("WiFi SSID", "sensor");
+    announce("WiFi BSSID", "sensor");
+    optional_payload = jsna("entity_category","diagnostic") + jsna("device_class","signal_strength") + jsna("unit_of_measurement","dBm");
+    announce("WiFi RSSI", "sensor");
+    optional_payload = jsna("entity_category","diagnostic") + jsna("device_class","duration") + jsna("unit_of_measurement","s") + jsna("entity_registry_enabled_default","False");
+    announce("ESP Uptime", "sensor");
+
+    MQTTclient.publish(MQTTprefix + "/WiFiSSID", String(WiFi.SSID()), true, 0);
+    MQTTclient.publish(MQTTprefix + "/WiFiBSSID", String(WiFi.BSSIDstr()), true, 0);
+}
+#endif //MQTT
 
 //make mongoose 7.14 compatible with 7.13
 #define mg_http_match_uri(X,Y) mg_match(X->uri, mg_str(Y), NULL)

@@ -31,8 +31,8 @@
 #define WIFI_MODE 0                                                             // WiFi disabled
 #define AP_PASSWORD "00000000"                                                  // Will be overwritten by random 8 char password.
 
+#include "debug.h"
+
 // Toggle pins of the RS485 transceiver.
 void ToggleRS485(bool level);
-
-#define FREE(x) free(x); x = NULL;
 

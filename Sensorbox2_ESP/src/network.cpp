@@ -1,15 +1,18 @@
-#include "main.h"
 #include <WiFi.h>
 //#include "esp_ota_ops.h"
 #include "mbedtls/md_internal.h"
-#include "radix.h"
+#include "utils.h"
 #include "network.h"
 
 #include <HTTPClient.h>
 #include <ESPmDNS.h>
 #include <Update.h>
-#include <ArduinoJson.h>
 #include <Preferences.h>
+
+#include "main.h"
+#if SMARTEVSE_VERSION == 3
+#include "OneWire.h"
+#endif
 
 #ifndef DEBUG_DISABLED
 RemoteDebug Debug;
@@ -22,7 +25,6 @@ struct tm timeinfo;
 bool LocalTimeSet = false;
 
 //mongoose stuff
-#include "mongoose.h"
 #include "esp_log.h"
 struct mg_mgr mgr;  // Mongoose event manager. Holds all connections
 // end of mongoose stuff
@@ -48,9 +50,11 @@ extern void write_settings(void);
 extern void StopwebServer(void); //TODO or move over to network.cpp?
 extern void StartwebServer(void); //TODO or move over to network.cpp?
 extern bool handle_URI(struct mg_connection *c, struct mg_http_message *hm,  webServerRequest* request);
-
-extern uint32_t serialnr;
+extern uint8_t AutoUpdate;
 extern Preferences preferences;
+extern uint16_t firmwareUpdateTimer;
+
+uint32_t serialnr;
 
 
 // The following data will be updated by eeprom/storage data at powerup:
@@ -61,13 +65,6 @@ String TZinfo = "";                                                         // c
 char *downloadUrl = NULL;
 int downloadProgress = 0;
 int downloadSize = 0;
-//#define FW_UPDATE_DELAY 30        //DINGO TODO                                            // time between detection of new version and actual update in seconds
-#define FW_UPDATE_DELAY 3600                                                    // time between detection of new version and actual update in seconds
-uint16_t firmwareUpdateTimer = 0;                                               // timer for firmware updates in seconds, max 0xffff = approx 18 hours
-                                                                                // 0 means timer inactive
-                                                                                // 0 < timer < FW_UPDATE_DELAY means we are in countdown for an actual update
-                                                                                // FW_UPDATE_DELAY <= timer <= 0xffff means we are in countdown for checking
-                                                                                //                                              whether an update is necessary
 
 bool isValidInput(String input) {
   // Check if the input contains only alphanumeric characters, underscores, and hyphens
@@ -79,9 +76,15 @@ bool isValidInput(String input) {
   return true;
 }
 
-
 static uint8_t CliState = 0;
+#ifdef SENSORBOX_VERSION
 void ProvisionCli(HardwareSerial &s) {
+//void ProvisionCli(HardwareSerial &s = &Serial) {
+#else
+void ProvisionCli(void) {
+    HardwareSerial &s = Serial;
+//void ProvisionCli(HWCDC &s = &Serial) {
+#endif
     // SSID and PW for your Router
     static String Router_SSID, Router_Pass;
     static char CliBuffer[64];
@@ -154,87 +157,6 @@ void ProvisionCli(HardwareSerial &s) {
 
 
 #if MQTT
-void mqtt_receive_callback(const String topic, const String payload) {
-    // Make sure MQTT updates directly to prevent debounces
-    lastMqttUpdate = 10;
-}
-
-
-void SetupMQTTClient() {
-    // Set up subscriptions
-    MQTTclient.subscribe(MQTTprefix + "/Set/#",1);
-    MQTTclient.publish(MQTTprefix+"/connected", "online", true, 0);
-
-    //publish MQTT discovery topics
-    //we need something to make all this JSON stuff readable, without doing all this assign and serialize stuff
-#define jsn(x, y) String(R"(")") + x + R"(" : ")" + y + R"(")"
-    //jsn(device_class, current) expands to:
-    // R"("device_class" : "current")"
-
-#define jsna(x, y) String(R"(, )") + jsn(x, y)
-    //json add expansion, same as above but now with a comma prepended
-
-    //first all device stuff:
-    const String device_payload = String(R"("device": {)") + jsn("model","SmartEVSE v3") + jsna("identifiers", MQTTprefix) + jsna("name", MQTTprefix) + jsna("manufacturer","Stegen") + jsna("configuration_url", "http://" + WiFi.localIP().toString().c_str()) + jsna("sw_version", String(VERSION)) + "}";
-    //a device SmartEVSE-1001 consists of multiple entities, and an entity can be in the domains sensor, number, select etc.
-    String entity_suffix, entity_name, optional_payload;
-
-    //some self-updating variables here:
-#define entity_id String(MQTTprefix + "-" + entity_suffix)
-#define entity_path String(MQTTprefix + "/" + entity_suffix)
-#define entity_name(x) entity_name = x; entity_suffix = entity_name; entity_suffix.replace(" ", "");
-
-    //create template to announce an entity in it's own domain:
-#define announce(x, entity_domain) entity_name(x); \
-    MQTTclient.publish("homeassistant/" + String(entity_domain) + "/" + entity_id + "/config", \
-     "{" \
-        + jsn("name", entity_name) \
-        + jsna("object_id", entity_id) \
-        + jsna("unique_id", entity_id) \
-        + jsna("state_topic", entity_path) \
-        + jsna("availability_topic",String(MQTTprefix+"/connected")) \
-        + ", " + device_payload + optional_payload \
-        + "}", \
-    true, 0); // Retain + QoS 0
-
-    //set the parameters for and announce sensors with device class 'current':
-    optional_payload = jsna("device_class","current") + jsna("unit_of_measurement","A") + jsna("value_template", R"({{ value | int / 10 }})");
-//    if (MainsMeter.Type) {
-        announce("Mains Current L1", "sensor");
-        announce("Mains Current L2", "sensor");
-        announce("Mains Current L3", "sensor");
-//    }
-/*    if (EVMeter.Type) {
-        announce("EV Current L1", "sensor");
-        announce("EV Current L2", "sensor");
-        announce("EV Current L3", "sensor");
-    }*/
-/*
-    if (EVMeter.Type) {
-        //set the parameters for and announce other sensor entities:
-        optional_payload = jsna("device_class","power") + jsna("unit_of_measurement","W");
-        announce("EV Charge Power", "sensor");
-        optional_payload = jsna("device_class","energy") + jsna("unit_of_measurement","Wh");
-        announce("EV Energy Charged", "sensor");
-        optional_payload = jsna("device_class","energy") + jsna("unit_of_measurement","Wh") + jsna("state_class","total_increasing");
-        announce("EV Total Energy Charged", "sensor");
-    }
-*/
-
-    //set the parameters for and announce diagnostic sensor entities:
-    optional_payload = jsna("entity_category","diagnostic");
-    announce("WiFi SSID", "sensor");
-    announce("WiFi BSSID", "sensor");
-    optional_payload = jsna("entity_category","diagnostic") + jsna("device_class","signal_strength") + jsna("unit_of_measurement","dBm");
-    announce("WiFi RSSI", "sensor");
-    optional_payload = jsna("entity_category","diagnostic") + jsna("device_class","duration") + jsna("unit_of_measurement","s") + jsna("entity_registry_enabled_default","False");
-    announce("ESP Uptime", "sensor");
-
-    MQTTclient.publish(MQTTprefix + "/WiFiSSID", String(WiFi.SSID()), true, 0);
-    MQTTclient.publish(MQTTprefix + "/WiFiBSSID", String(WiFi.BSSIDstr()), true, 0);
-}
-
-
 #if MQTT_ESP == 1
 /*
  * @brief Event handler registered to receive MQTT events
@@ -1049,7 +971,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
                         FREE(signature);
                     }
                 } else //end of firmware.signed.bin
-#ifndef SENSORBOX_VERSION
+#if SMARTEVSE_VERSION == 3  //TODO make this work for v4 too!
                 if (!memcmp(file,"rfid.txt", sizeof("rfid.txt"))) {
                     if (offset != 0) {
                         mg_http_reply(c, 400, "", "rfid.txt too big, only 100 rfid's allowed!");
@@ -1097,82 +1019,10 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
 #endif
                 mg_http_reply(c, 200, "", "%ld", res);
             }
-/*        } else if (mg_http_match_uri(hm, "/currents") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-            DynamicJsonDocument doc(200);
-    
-            if(request->hasParam("battery_current")) {
-                if (LoadBl < 2) {
-                    homeBatteryCurrent = request->getParam("battery_current")->value().toInt();
-                    homeBatteryLastUpdate = time(NULL);
-                    doc["battery_current"] = homeBatteryCurrent;
-                } else
-                    doc["battery_current"] = "not allowed on slave";
-            }
-    
-            if(MainsMeter.Type == EM_API) {
-                if(request->hasParam("L1") && request->hasParam("L2") && request->hasParam("L3")) {
-                    if (LoadBl < 2) {
-                        MainsMeter.Irms[0] = request->getParam("L1")->value().toInt();
-                        MainsMeter.Irms[1] = request->getParam("L2")->value().toInt();
-                        MainsMeter.Irms[2] = request->getParam("L3")->value().toInt();
-    
-                        CalcIsum();
-                        for (int x = 0; x < 3; x++) {
-                            doc["original"]["L" + x] = IrmsOriginal[x];
-                            doc["L" + x] = MainsMeter.Irms[x];
-                        }
-                        doc["TOTAL"] = Isum;
-    
-                        MainsMeter.Timeout = COMM_TIMEOUT;
-    
-                    } else
-                        doc["TOTAL"] = "not allowed on slave";
-                }
-            }
-    
-            String json;
-            serializeJson(doc, json);
-            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
-    
-        } else if (mg_http_match_uri(hm, "/ev_meter") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-            DynamicJsonDocument doc(200);
-    
-            if(EVMeter.Type == EM_API) {
-                if(request->hasParam("L1") && request->hasParam("L2") && request->hasParam("L3")) {
-    
-                    EVMeter.Irms[0] = request->getParam("L1")->value().toInt();
-                    EVMeter.Irms[1] = request->getParam("L2")->value().toInt();
-                    EVMeter.Irms[2] = request->getParam("L3")->value().toInt();
-                    EVMeter.CalcImeasured();
-                    EVMeter.Timeout = COMM_EVTIMEOUT;
-                    for (int x = 0; x < 3; x++)
-                        doc["ev_meter"]["currents"]["L" + x] = EVMeter.Irms[x];
-                    doc["ev_meter"]["currents"]["TOTAL"] = EVMeter.Irms[0] + EVMeter.Irms[1] + EVMeter.Irms[2];
-                }
-    
-                if(request->hasParam("import_active_energy") && request->hasParam("export_active_energy") && request->hasParam("import_active_power")) {
-    
-                    EVMeter.Import_active_energy = request->getParam("import_active_energy")->value().toInt();
-                    EVMeter.Export_active_energy = request->getParam("export_active_energy")->value().toInt();
-    
-                    EVMeter.PowerMeasured = request->getParam("import_active_power")->value().toInt();
-                    EVMeter.UpdateEnergies();
-                    doc["ev_meter"]["import_active_power"] = EVMeter.PowerMeasured;
-                    doc["ev_meter"]["import_active_energy"] = EVMeter.Import_active_energy;
-                    doc["ev_meter"]["export_active_energy"] = EVMeter.Export_active_energy;
-                    doc["ev_meter"]["total_kwh"] = EVMeter.Energy;
-                    doc["ev_meter"]["charged_kwh"] = EVMeter.EnergyCharged;
-                }
-            }
-    
-            String json;
-            serializeJson(doc, json);
-            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
-    
-    */    } else if (mg_http_match_uri(hm, "/reboot") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+        } else if (mg_http_match_uri(hm, "/reboot") && !memcmp("POST", hm->method.buf, hm->method.len)) {
             shouldReboot = true;
             mg_http_reply(c, 200, "", "Rebooting....");
-          } else if (mg_http_match_uri(hm, "/settings") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+        } else if (mg_http_match_uri(hm, "/settings") && !memcmp("POST", hm->method.buf, hm->method.len)) {
             DynamicJsonDocument doc(64);
 #if MQTT
             if (request->hasParam("mqtt_update") && request->getParam("mqtt_update")->value().toInt() == 1) {
@@ -1227,51 +1077,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
             String json;
             serializeJson(doc, json);
             mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", json.c_str());    // Yes. Respond JSON
-    /*
-    
-    #if FAKE_RFID
-        //this can be activated by: http://smartevse-xxx.lan/debug?showrfid=1
-        } else if (mg_http_match_uri(hm, "/debug") && !memcmp("GET", hm->method.buf, hm->method.len)) {
-            if(request->hasParam("showrfid")) {
-                Show_RFID = strtol(request->getParam("showrfid")->value().c_str(),NULL,0);
-            }
-            _LOG_A("DEBUG: Show_RFID=%u.\n",Show_RFID);
-            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", ""); //json request needs json response
-    #endif
-    
-    #if AUTOMATED_TESTING
-        //this can be activated by: http://smartevse-xxx.lan/automated_testing?current_max=100
-        //WARNING: because of automated testing, no limitations here!
-        //THAT IS DANGEROUS WHEN USED IN PRODUCTION ENVIRONMENT
-        //FOR SMARTEVSE's IN A TESTING BENCH ONLY!!!!
-        } else if (mg_http_match_uri(hm, "/automated_testing") && !memcmp("POST", hm->method.buf, hm->method.len)) {
-            if(request->hasParam("current_max")) {
-                MaxCurrent = strtol(request->getParam("current_max")->value().c_str(),NULL,0);
-            }
-            if(request->hasParam("current_main")) {
-                MaxMains = strtol(request->getParam("current_main")->value().c_str(),NULL,0);
-            }
-            if(request->hasParam("current_max_circuit")) {
-                MaxCircuit = strtol(request->getParam("current_max_circuit")->value().c_str(),NULL,0);
-            }
-            if(request->hasParam("mainsmeter")) {
-                MainsMeter.Type = strtol(request->getParam("mainsmeter")->value().c_str(),NULL,0);
-            }
-            if(request->hasParam("evmeter")) {
-                EVMeter.Type = strtol(request->getParam("evmeter")->value().c_str(),NULL,0);
-            }
-            if(request->hasParam("config")) {
-                Config = strtol(request->getParam("config")->value().c_str(),NULL,0);
-                setState(STATE_A);                                                  // so the new value will actually be read
-            }
-            if(request->hasParam("loadbl")) {
-                int LBL = strtol(request->getParam("loadbl")->value().c_str(),NULL,0);
-                ConfigureModbusMode(LBL);
-                LoadBl = LBL;
-            }
-            mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s\r\n", ""); //json request needs json response
-    #endif
-    */    } else {                                                                    // if everything else fails, serve static page
+        } else {                                                                    // if everything else fails, serve static page
             struct mg_http_serve_opts opts = {.root_dir = "/data", .ssi_pattern = NULL, .extra_headers = NULL, .mime_types = NULL, .page404 = NULL, .fs = &mg_fs_packed };
             //opts.fs = NULL;
             mg_http_serve_dir(c, hm, &opts);
@@ -1412,7 +1218,11 @@ void SetupPortalTask(void * parameter) {
     unsigned long configTimer = millis();
     while (!WiFi.smartConfigDone() && (WIFImode == 2) && (WiFi.status() != WL_CONNECTED) && millis() - configTimer < 180000) {
         // Also start Serial CLI for entering AP and password.
+#ifdef SENSORBOX_VERSION
         ProvisionCli(s);
+#else
+        ProvisionCli();
+#endif
         delay(100);
     }                       // loop until connected or Wifi setup menu is exited.
     delay(2000);            // give smartConfig time to send provision status back to the users phone.
@@ -1428,7 +1238,9 @@ void SetupPortalTask(void * parameter) {
     write_settings();
     CliState= 0;
 #ifndef SENSORBOX_VERSION                                                       //so we are not on a sensorbox but on a smartevse
+#if SMARTEVSE_VERSION == 3 //TODO enable this when LCD menu in v4 is enabled
     LCDNav = 0;
+#endif
 #else
     s.end();
     if (s == Serial2) {
@@ -1443,7 +1255,7 @@ void SetupPortalTask(void * parameter) {
 }
 
 
-void handleWIFImode(HardwareSerial *s) {
+void handleWIFImode(void *s) {
     if (WIFImode == 2 && WiFi.getMode() != WIFI_AP_STA) {
         //now start the portal in the background, so other tasks keep running
         xTaskCreate(
@@ -1519,8 +1331,6 @@ void WiFiSetup(void) {
         SmartConfigKey[i+8] = random(9) + '1';
     }
 #endif
-    firmwareUpdateTimer = random(FW_UPDATE_DELAY, 0xffff);
-    //firmwareUpdateTimer = random(FW_UPDATE_DELAY, 120); // DINGO TODO debug max 2 minutes
 
     if (preferences.begin("settings", false) ) {
 #if MQTT == 0
@@ -1544,79 +1354,6 @@ void WiFiSetup(void) {
 #endif
 
 #endif //MQTT
-}
-
-
-/*
-// returns true if current and latest version can be detected correctly and if the latest version is newer then current
-// this means that ANY home compiled version, which has version format "11:20:03@Jun 17 2024", will NEVER be automatically updated!!
-// same goes for current version with an -RC extension: this will NEVER be automatically updated!
-// same goes for latest version with an -RC extension: this will NEVER be automatically updated! This situation should never occur since
-// we only update from the "stable" repo !!
-bool fwNeedsUpdate(char * version) {
-    // version NEEDS to be in the format: vx.y.z[-RCa] where x, y, z, a are digits, multiple digits are allowed.
-    // valid versions are v3.6.10   v3.17.0-RC13
-    int latest_major, latest_minor, latest_patch, latest_rc, cur_major, cur_minor, cur_patch, cur_rc;
-    int hit = sscanf(version, "v%i.%i.%i-RC%i", &latest_major, &latest_minor, &latest_patch, &latest_rc);
-    _LOG_A("Firmware version detection hit=%i, LATEST version detected=v%i.%i.%i-RC%i.\n", hit, latest_major, latest_minor, latest_patch, latest_rc);
-    int hit2 = sscanf(VERSION, "v%i.%i.%i-RC%i", &cur_major, &cur_minor, &cur_patch, &cur_rc);
-    _LOG_A("Firmware version detection hit=%i, CURRENT version detected=v%i.%i.%i-RC%i.\n", hit2, cur_major, cur_minor, cur_patch, cur_rc);
-    if (hit != 3 || hit2 != 3)                                                  // we couldnt detect simple vx.y.z version nrs, either current or latest
-        return false;
-    if (cur_major > latest_major)
-        return false;
-    if (cur_major < latest_major)
-        return true;
-    if (cur_major == latest_major) {
-        if (cur_minor > latest_minor)
-            return false;
-        if (cur_minor < latest_minor)
-            return true;
-        if (cur_minor == latest_minor)
-            return (cur_patch < latest_patch);
-    }
-    return false;
-}
-*/
-void loop2() {
-
-    static unsigned long lastCheck = 0;
-    if (millis() - lastCheck >= 1000) {
-        lastCheck = millis();
-        //this block is for non-time critical stuff that needs to run approx 1 / second
-/*
-        //_LOG_A("DINGO: firmwareUpdateTimer just before decrement=%i.\n", firmwareUpdateTimer);
-        if (AutoUpdate && !shouldReboot) {                                      // we don't want to autoupdate if we are on the verge of rebooting
-            firmwareUpdateTimer--;
-            char version[32];
-            if (firmwareUpdateTimer == FW_UPDATE_DELAY) {                       // we now have to check for a new version
-                //timer is not reset, proceeds to 65535 which is approx 18h from now
-                if (getLatestVersion(String(String(OWNER_FACT) + "/" + String(REPO_FACT)), "", version)) {
-                    if (fwNeedsUpdate(version)) {
-                        _LOG_A("Firmware reports it needs updating, will update in %i seconds\n", FW_UPDATE_DELAY);
-                        asprintf(&downloadUrl, "%s/fact_firmware.signed.bin", FW_DOWNLOAD_PATH); //will be freed in FirmwareUpdate() ; format: http://s3.com/fact_firmware.debug.signed.bin
-                    } else {
-                        _LOG_A("Firmware reports it needs NO update!\n");
-                        firmwareUpdateTimer = random(FW_UPDATE_DELAY + 36000, 0xffff);  // at least 10 hours in between checks
-                    }
-                }
-            } else if (firmwareUpdateTimer == 0) {                              // time to download & flash!
-                if (getLatestVersion(String(String(OWNER_FACT) + "/" + String(REPO_FACT)), "", version)) { // recheck version info
-                    if (fwNeedsUpdate(version)) {
-                        _LOG_A("Firmware reports it needs updating, starting update NOW!\n");
-                        asprintf(&downloadUrl, "%s/fact_firmware.signed.bin", FW_DOWNLOAD_PATH); //will be freed in FirmwareUpdate() ; format: http://s3.com/fact_firmware.debug.signed.bin
-                        RunFirmwareUpdate();
-                    } else {
-                        _LOG_A("Firmware changed its mind, NOW it reports it needs NO update!\n");
-                    }
-                    //note: the firmwareUpdateTimer will decrement to 65535s so next check will be in 18hours or so....
-                }
-            }
-        } // AutoUpdate */
-        /////end of non-time critical stuff
-    }
-
-    mg_mgr_poll(&mgr, 100);                                                     // TODO increase this parameter to up to 1000 to make loop() less greedy
 }
 
 
