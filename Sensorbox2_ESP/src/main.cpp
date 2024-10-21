@@ -97,7 +97,7 @@ String SmartEVSEHost = "";
 
 unsigned long ModbusTimer=0;
 unsigned char dataready=0, CTcount, DSMRver, IrmsMode = 0;
-unsigned char LedCnt, LedState, LedSeq[3] = {0,0,0};
+unsigned char LedCnt, LedState, LedSeq[4] = {0,0,0,0};
 float Irms[3], Volts[3], IrmsCT[3];                                             // float is 32 bits; current in A
 int16_t MainsMeterIrms[3];                                                      // current in dA (10 * A) !!!
 uint8_t datamemory = 0;
@@ -554,35 +554,36 @@ void P1Task(void * parameter) {
 // Task BlinkLed
 //
 void BlinkLed(void * parameter) {
-  static uint8_t LedTimer = 0;
 
     while(1) {
       
-      while ((LedTimer++ > 1) && LedState) {                                        // start with state 6
+      if (LedState) {                                                               // 8 states
 
         if ((LedState-- %2) == 0) {
           // check for Orange LED blink
-          if (LedSeq[LedCnt] == 1) {
+          if (LedSeq[LedCnt] == LED_ORANGE) {
             digitalWrite(PIN_LED_RED,LOW);                                          // LED_RED_ON
             digitalWrite(PIN_LED_GREEN,LOW);                                        // Led green on
           // check for Red LED blink  
-          } else if (LedSeq[LedCnt] == 2) {
+          } else if (LedSeq[LedCnt] == LED_RED) {
             digitalWrite(PIN_LED_RED,LOW);                                          // LED_RED_ON
             // blink LED Green
-          } else digitalWrite(PIN_LED_GREEN,LOW);                                   // Led green on    
-          if (LedCnt < 2) LedCnt++;  
+          } else if (LedSeq[LedCnt] == LED_GREEN) {  
+            digitalWrite(PIN_LED_GREEN,LOW);                                        // Led green on    
+          }
+          LedSeq[LedCnt] = LED_OFF; 
+          if (LedCnt < 3) LedCnt++;  
 
         } else {
           digitalWrite(PIN_LED_GREEN,HIGH);                                         // LED_GREEN_OFF;
           digitalWrite(PIN_LED_RED,HIGH);                                           // LED_RED_OFF;
         }
-        LedTimer = 0;
       }
 
       // keep track of available stack ram
       blinkram = uxTaskGetStackHighWaterMark( NULL );
-      // delay task for 100mS
-      vTaskDelay(100 / portTICK_PERIOD_MS);
+      // delay task for 200mS
+      vTaskDelay(200 / portTICK_PERIOD_MS);
     }
 }    
 
@@ -615,35 +616,38 @@ ModbusMessage MBReadFC04(ModbusMessage request) {
   // Set Led sequence for the next 2 seconds
   // reset to first part of sequence
   LedCnt = 0;
+  n = 1;
+  LedState = 8;
 
   // When we have received a valid measurement from the SmartMeter, the led will blink only once.
   if (dataready & 0xC0) {
-	  LedState = 2;
     // DSMR version not 5.x! Blink RED
-	  if (DSMRver < 50) LedSeq[0] = 2;
+	  if (DSMRver < 50) LedSeq[0] = LED_RED;
       // DSMR version OK, Blink GREEN
-	    else LedSeq[0] = 0;
+	    else LedSeq[0] = LED_GREEN;
 
   // No SmartMeter connected, we use the CT's
   // CT measurement available?
 	} else if (dataready & 0x03) {
     // CT measurements with current direction?
     if (IrmsMode == 0) {
-      if (IrmsCT[0] < -0.1 ) LedSeq[0]=0; else LedSeq[0]=1;
-      if (IrmsCT[1] < -0.1 ) LedSeq[1]=0; else LedSeq[1]=1;
-      if (IrmsCT[2] < -0.1 ) LedSeq[2]=0; else LedSeq[2]=1;
+      if (IrmsCT[0] < -0.1 ) LedSeq[0]=LED_GREEN; else LedSeq[0]=LED_ORANGE;
+      if (IrmsCT[1] < -0.1 ) LedSeq[1]=LED_GREEN; else LedSeq[1]=LED_ORANGE;
+      if (IrmsCT[2] < -0.1 ) LedSeq[2]=LED_GREEN; else LedSeq[2]=LED_ORANGE;
       // 6 States, ON/OFF (3 CT's)
-  	  LedState = 6;                                                           		
+  	  n = 3;
     } else {
       // Blink 1x Orange when not using MAINS input
-      LedState = 2;
-      LedSeq[0] = 1;                
+      LedSeq[0] = LED_ORANGE;                
     }
   // LED_RED_ON (PIC chip not programmed?)
 	} else {
-    LedState = 0;
-    digitalWrite(PIN_LED_RED,LOW);
+    LedSeq[0] = LED_RED;
   }
+
+  // Show WiFi mode as last blink in sequence
+  if (WIFImode == 2) LedSeq[n] = LED_RED;
+  else if (WIFImode == 1) LedSeq[n] = LED_GREEN;
 
   // Set Modbus Sensorbox version 2.0 (20) + Wire settings.
   // Set Software version in MSB
@@ -774,7 +778,12 @@ void setup() {
   pinMode (PIN_RX, INPUT);                                                      // P1 data input
   pinMode (PIN_TX, INPUT);                                                      // extra debug output on P1 port (unused)
   digitalWrite (PIN_RS485_RE, LOW);                                             // Read enabled
-
+  
+  // Green status LED = firmware 2.1.0
+  // Firmware 2.0.x powered on with an Orange status LED
+  digitalWrite(PIN_LED_GREEN, LOW);                                             // LED Green ON;
+  digitalWrite(PIN_LED_RED, HIGH);                                              // LED Red OFF;
+  delay(500);
 
   // Setup Serial ports
   Serial.begin(115200, SERIAL_8N1, PIN_PGD, PIN_TXD, false);                    // Input from TX of PIC, and debug output to USB

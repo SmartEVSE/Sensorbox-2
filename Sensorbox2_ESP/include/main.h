@@ -26,6 +26,10 @@
 #define WIRES4 0                                                                //
 #define WIRES3 2                                                                //
 
+#define LED_OFF 0
+#define LED_RED 1
+#define LED_GREEN 2
+#define LED_ORANGE 3
 
 // Settings
 #define WIFI_MODE 0                                                             // WiFi disabled
