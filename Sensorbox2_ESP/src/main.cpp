@@ -96,23 +96,72 @@ extern uint8_t WIFImode;
 String SmartEVSEHost = "";
 
 unsigned long ModbusTimer=0;
-unsigned char dataready=0, CTcount, DSMRver, IrmsMode = 0;
+unsigned char dataready=0, datareadyAPI=0, CTcount, DSMRver, IrmsMode = 0;
 unsigned char LedCnt, LedState, LedSeq[4] = {0,0,0,0};
 float Irms[3], Volts[3], IrmsCT[3];                                             // float is 32 bits; current in A
 int16_t MainsMeterIrms[3];                                                      // current in dA (10 * A) !!!
-uint8_t datamemory = 0;
+bool lockedToP1 = false;
 unsigned char led = 0, Wire = WIRES4 + CW;
 uint16_t blinkram = 0, P1taskram = 0;
 extern bool LocalTimeSet;
 int phasesLastUpdate = 0;
 
 
+void SetLedSequence(uint8_t source) {
+    uint8_t n = 1;
+
+    // Set Led sequence for the next 2 seconds
+    // reset to first part of sequence
+    LedCnt = 0;
+    LedState = 8;
+
+    // When we have received a valid measurement from the SmartMeter, the led will blink only once.
+    if (source & 0xC0) {
+        // DSMR version not 5.x! Blink RED
+        if (DSMRver < 50) LedSeq[0] = LED_RED;
+        // DSMR version OK, Blink GREEN
+        else LedSeq[0] = LED_GREEN;
+
+    // No SmartMeter connected, we use the CT's
+    // CT measurement available?
+    } else if (source & 0x03) {
+        // CT measurements with current direction?
+        if (IrmsMode == 0) {
+            if (IrmsCT[0] < -0.1 ) LedSeq[0]=LED_GREEN; else LedSeq[0]=LED_ORANGE;
+            if (IrmsCT[1] < -0.1 ) LedSeq[1]=LED_GREEN; else LedSeq[1]=LED_ORANGE;
+            if (IrmsCT[2] < -0.1 ) LedSeq[2]=LED_GREEN; else LedSeq[2]=LED_ORANGE;
+            // 6 States, ON/OFF (3 CT's)
+            n = 3;
+        } else {
+            // Blink 1x Orange when not using MAINS input
+            LedSeq[0] = LED_ORANGE;                
+        }
+    // LED_RED_ON (PIC chip not programmed?)
+    } else {
+        LedSeq[0] = LED_RED;
+    }
+
+    // Show WiFi mode as last blink in sequence
+    if (WIFImode == 2) LedSeq[n] = LED_RED;
+    else if (WIFImode == 1) LedSeq[n] = LED_GREEN;
+}
+
 
 // Every ~2 seconds send measurement data to APIs
 void Timer2S(void * parameter) {
     while (true) {
         if (WiFi.status() == WL_CONNECTED) {
-          if ((datamemory & 0x80 ) || (datamemory & 0x03)) {                        // we have data
+
+          // We have valid data. Does not allow switching from P1 back to CT data !
+          // A broken P1 connection now creates a comm error instead of (invalid) CT measurements being used.
+          if ( (lockedToP1 == true && datareadyAPI & 0x80) || (lockedToP1 == false && datareadyAPI & 0x03) ) {
+
+            for (uint8_t x = 0; x < 3; x++) {
+              // P1 data has precedence over CT data, although CT data might be newer.
+              if (datareadyAPI & 0x80) MainsMeterIrms[x] = round(Irms[x] * 10);
+              else MainsMeterIrms[x] = round(IrmsCT[x] * 10);
+            }
+  
     #if MQTT
             //publishing to the broker
             MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", MainsMeterIrms[0], false, 0);
@@ -145,10 +194,11 @@ void Timer2S(void * parameter) {
                     FREE(currents);
     #endif
                 }
+                SetLedSequence(datareadyAPI);
             }
           }
 
-          datamemory = 0;
+          datareadyAPI = 0;
         }
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
@@ -191,27 +241,6 @@ void read_settings(bool write) {
       _LOG_A("Can not open preferences!\n");
   }
 }
-
-
-// Poly used is x^16+x^15+x^2+x
-unsigned int CRC16(unsigned int crc, unsigned char *buf, int len)
-{
-	for (int pos = 0; pos < len; pos++)
-	{
-		crc ^= (unsigned int)buf[pos];        // XOR byte into least sig. byte of crc
-
-		for (int i = 8; i != 0; i--) {        // Loop over each bit
-			if ((crc & 0x0001) != 0) {          // If the LSB is set
-				crc >>= 1;                        // Shift right and XOR 0xA001
-				crc ^= 0xA001;
-			}
-			else                                // Else LSB is not set
-				crc >>= 1;                        // Just shift right
-		}
-	}
-	return crc;
-}
-
 
 
 // ----------------------------------------------------------------------------------------------------------------
@@ -309,9 +338,6 @@ void CTReceive() {
           IrmsMode = 0;      
         }
 
-        for (int x = 0; x < 3; x++) {
-            MainsMeterIrms[x] = round(IrmsCT[x] * 10);
-        }
         phasesLastUpdate = time(NULL);
 
         // very small values will be displayed as 0.0A
@@ -332,6 +358,7 @@ void CTReceive() {
         
         // update dataready, so the Master knows the CT's have been read with new data
         dataready |= 0x03;
+        datareadyAPI |= 0x03;
         _LOG_V("\rCT1: %2.1f A CT2: %2.1f A CT3: %2.1f A  ",IrmsCT[0],IrmsCT[1],IrmsCT[2] );
 
       } else {
@@ -414,13 +441,13 @@ void P1Extract() {
   Irms[1] = (L2Power-L2PowerReturn)/Volts[1];
   Irms[2] = (L3Power-L3PowerReturn)/Volts[2];
   
-  for (int x = 0; x < 3; x++) {
-    MainsMeterIrms[x] = round(Irms[x] * 10);
-  }
   phasesLastUpdate = time(NULL);
 
-  if (DSMRver >= 50) dataready |= 0x80;                                     	// P1 dataready
-  else dataready |= 0x40;                                                   	// DSMR version not 5.0 !!
+  if (DSMRver >= 50) {
+    dataready |= 0x80;                                     	                  // P1 dataready
+    datareadyAPI |= 0x80;
+    lockedToP1 = true;
+  } else dataready |= 0x40;                                                   // DSMR version not 5.0 !!
 
   _LOG_V("L1: %3d V L2: %3d V L3: %3d V  ",(int)(Volts[0]),(int)(Volts[1]),(int)(Volts[2]) );
   _LOG_V("L1: %2.1f A L2: %2.1f A L3: %2.1f A  \r\n",Irms[0],Irms[1],Irms[2] );
@@ -511,9 +538,6 @@ void P1Task(void * parameter) {
         _LOG_A("\nheap error after CT receive\n");
     }
 
-    // remember state of dataready, as it will be cleared after sending the data to the modbus Master.
-    if (dataready > datamemory) datamemory = dataready;
-
     if (WiFi.status() != WL_CONNECTED && esp_timer_get_time() / 1000000 > 5 && WIFImode != 2 && esp_timer_get_time() / 1000000 < 180) {
         // if we have no wifi
         // and we are not in the first 5 seconds of startup (to give the existing wifi time to connect and P1 data to be entered)
@@ -521,7 +545,7 @@ void P1Task(void * parameter) {
         // and we are not later then the first 180s after startup; perhaps we are not interested in having a wifi connection?
         // we go to wifimode 2 smartconfig
         WIFImode = 2;
-        if (datamemory & 0x80 ) {
+        if (lockedToP1) {
             handleWIFImode(&Serial);                                             // P1 data comes in so Serial0 is available
             blockCT = true;
         } else {
@@ -613,42 +637,8 @@ ModbusMessage MBReadFC04(ModbusMessage request) {
   // Prepare start of response
   response.add(request.getServerID(), request.getFunctionCode(), (uint8_t)(words * 2));
 
-  // Set Led sequence for the next 2 seconds
-  // reset to first part of sequence
-  LedCnt = 0;
-  n = 1;
-  LedState = 8;
-
-  // When we have received a valid measurement from the SmartMeter, the led will blink only once.
-  if (dataready & 0xC0) {
-    // DSMR version not 5.x! Blink RED
-	  if (DSMRver < 50) LedSeq[0] = LED_RED;
-      // DSMR version OK, Blink GREEN
-	    else LedSeq[0] = LED_GREEN;
-
-  // No SmartMeter connected, we use the CT's
-  // CT measurement available?
-	} else if (dataready & 0x03) {
-    // CT measurements with current direction?
-    if (IrmsMode == 0) {
-      if (IrmsCT[0] < -0.1 ) LedSeq[0]=LED_GREEN; else LedSeq[0]=LED_ORANGE;
-      if (IrmsCT[1] < -0.1 ) LedSeq[1]=LED_GREEN; else LedSeq[1]=LED_ORANGE;
-      if (IrmsCT[2] < -0.1 ) LedSeq[2]=LED_GREEN; else LedSeq[2]=LED_ORANGE;
-      // 6 States, ON/OFF (3 CT's)
-  	  n = 3;
-    } else {
-      // Blink 1x Orange when not using MAINS input
-      LedSeq[0] = LED_ORANGE;                
-    }
-  // LED_RED_ON (PIC chip not programmed?)
-	} else {
-    LedSeq[0] = LED_RED;
-  }
-
-  // Show WiFi mode as last blink in sequence
-  if (WIFImode == 2) LedSeq[n] = LED_RED;
-  else if (WIFImode == 1) LedSeq[n] = LED_GREEN;
-
+  SetLedSequence(dataready);
+  
   // Set Modbus Sensorbox version 2.0 (20) + Wire settings.
   // Set Software version in MSB
   ModbusData[0] = (SENSORBOX_SWVER << 8) + SENSORBOX_VERSION + Wire;
@@ -699,8 +689,9 @@ ModbusMessage MBReadFC04(ModbusMessage request) {
 	
   if ((millis() - ModbusTimer) > 2500) {
       LOG_W("Missed modbus response\n");
-    ModbusTimer = millis();
-  }
+  } 
+  ModbusTimer = millis();
+
 
   // Loop over all words to be sent
   for (uint16_t i = 0; i < words; i++) {
