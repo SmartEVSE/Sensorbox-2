@@ -36,3 +36,22 @@ uint32_t MacId() {
   // so we do not use these bits in the ID.
   return id >> 2;         
 }
+
+// Poly used is x^16+x^15+x^2+x
+uint16_t CRC16(uint16_t crc, uint8_t *buf, uint16_t len)
+{
+	for (uint16_t pos = 0; pos < len; pos++)
+	{
+		crc ^= (uint16_t)buf[pos];            // XOR byte into least sig. byte of crc
+
+		for (uint8_t i = 8; i != 0; i--) {    // Loop over each bit
+			if ((crc & 0x0001) != 0) {          // If the LSB is set
+				crc >>= 1;                        // Shift right and XOR 0xA001
+				crc ^= 0xA001;
+			}
+			else                                // Else LSB is not set
+				crc >>= 1;                        // Just shift right
+		}
+	}
+	return crc;
+}
