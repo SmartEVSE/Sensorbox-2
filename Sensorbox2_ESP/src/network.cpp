@@ -81,9 +81,12 @@ static uint8_t CliState = 0;
 void ProvisionCli(HardwareSerial &s) {
 //void ProvisionCli(HardwareSerial &s = &Serial) {
 #else
+#if SMARTEVSE_VERSION == 3
 void ProvisionCli(void) {
     HardwareSerial &s = Serial;
-//void ProvisionCli(HWCDC &s = &Serial) {
+#else
+void ProvisionCli(HWCDC &s = Serial) {
+#endif
 #endif
     // SSID and PW for your Router
     static String Router_SSID, Router_Pass;
@@ -852,7 +855,12 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
             mg_http_get_var(&hm->query, "debug", buf, sizeof(buf));
             debug = strtol(buf, NULL, 0);
             if (!memcmp(owner, OWNER_FACT, sizeof(OWNER_FACT)) || (!memcmp(owner, OWNER_COMM, sizeof(OWNER_COMM)))) {
-                asprintf(&downloadUrl, "%s/%s_sensorboxv2_firmware.%ssigned.bin", FW_DOWNLOAD_PATH, owner, debug ? "debug.": ""); //will be freed in FirmwareUpdate() ; format: http://s3.com/fact_sensorboxv2_firmware.debug.signed.bin
+#ifdef SENSORBOX_VERSION
+                asprintf(&downloadUrl, "%s/%s_sensorboxv2_firmware.%ssigned.bin", FW_DOWNLOAD_PATH, owner, debug ? "debug.": ""); //will be freed in FirmwareUpdate() ; format: http://s3.com/dingo35_sensorboxv2_firmware.debug.signed.bin
+#else
+                asprintf(&downloadUrl, "%s/%s_firmware.%ssigned.bin", FW_DOWNLOAD_PATH, owner, debug ? "debug.": ""); //will be freed in FirmwareUpdate() ; format: http://s3.com/dingo35_firmware.debug.signed.bin
+
+#endif
                 RunFirmwareUpdate();
             }                                                                       // after the first call we just report progress
             DynamicJsonDocument doc(64); // https://arduinojson.org/v6/assistant/
@@ -1019,7 +1027,7 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
 #endif
                 mg_http_reply(c, 200, "", "%ld", res);
             }
-        } else if (mg_http_match_uri(hm, "/reboot") && !memcmp("POST", hm->method.buf, hm->method.len)) {
+        } else if (mg_http_match_uri(hm, "/reboot")) {
             shouldReboot = true;
             mg_http_reply(c, 200, "", "Rebooting....");
         } else if (mg_http_match_uri(hm, "/settings") && !memcmp("POST", hm->method.buf, hm->method.len)) {
@@ -1360,6 +1368,7 @@ void WiFiSetup(void) {
 // called by loop() in the main program
 void network_loop() {
     static unsigned long lastCheck_net = 0;
+    static int seconds = 0;
     if (millis() - lastCheck_net >= 1000) {
         lastCheck_net = millis();
         //this block is for non-time critical stuff that needs to run approx 1 / second
@@ -1367,9 +1376,13 @@ void network_loop() {
         if (!LocalTimeSet && WIFImode == 1) {
             _LOG_A("Time not synced with NTP yet.\n");
         }
+        //this block is for non-time critical stuff that needs to run approx 1 / 10 seconds
 #if MQTT
-        MQTTclient.publish(MQTTprefix + "/ESPUptime", esp_timer_get_time() / 1000000, false, 0);
-        MQTTclient.publish(MQTTprefix + "/WiFiRSSI", String(WiFi.RSSI()), false, 0);
+        if (seconds++ >= 9) {
+            seconds = 0;
+            MQTTclient.publish(MQTTprefix + "/ESPUptime", esp_timer_get_time() / 1000000, false, 0);
+            MQTTclient.publish(MQTTprefix + "/WiFiRSSI", String(WiFi.RSSI()), false, 0);
+        }
 #endif
     }
 
