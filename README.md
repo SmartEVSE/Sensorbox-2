@@ -7,9 +7,19 @@ The Sensorbox2 uses a PIC microcontroller which does the CT measurements and sen
 The ESP32 processes the P1 port (Smart Meter connection) data and RS485 communication to the SmartESVE.
 The PIC will be (re)programmed by the ESP32 module. At powerup the ESP32 looks for a PIC18F26K40.hex file in the /data folder and, when found programs the PIC18F26K40 microcontroller.
 
-This code uses Arduino core 2.0.2 as it has critical bug fixes, and much better Uart drivers.
-Modbus handling is done with the eModbus library.
-The platformio.ini file should install all necessary libraries automatically.
+# Upgrading firmware
+
+Versions 2.1.0 and higher have wifi, webserver and MQTT active on your Sensorbox-2; it all works similarly to the SmartEVSEv3. To upgrade from your old, non-wifi Sensorbox-2 firmware,
+upgrade your SmartEVSE firmware to version v3.7.2 or higher.
+
+Once your SmartEVSEv3 detects your Sensorbox-2's old firmware, it will present the LCD screen with a new option: SB2 WIFI, with default <Disabled>.
+Select <Setup>, the Sensorbox will presents itself as a Wifi Acces Point "smartevse-xxxx"; the password is shown on the LCD screen.
+Connect with your phone to that access point, go to http://192.168.4.1/ and configure your Wifi password.
+
+THIS IS A ONE TIME OPERATION!
+
+After you updated your Sensorbox-2 to v2.1.0 or higher, this function will not work anymore, and it will not be shown in your SmartEVSEv3 menu.
+You are supposed to update your firmware through the /update page on the Sensorbox-2 webserver, or through the ESPtouch or USB procedure as described in the SmartEVSEv3 docs.
 
 
 ## Modbus Registers
