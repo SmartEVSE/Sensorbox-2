@@ -71,7 +71,6 @@
 #include <HTTPClient.h>
 
 extern struct tm timeinfo;
-extern String TZinfo;
 
 //String APhostname = "SmartEVSE-" + String( MacId() & 0xffff, 10);           // SmartEVSE access point Name = SmartEVSE-xxxxx
 extern String APhostname;
@@ -228,11 +227,6 @@ void read_settings(bool write) {
   if (preferences.begin("settings", false) == true) {
     WIFImode = preferences.getUChar("WIFImode", WIFI_MODE);
     SmartEVSEHost = preferences.getString("SmartEVSEHost", "");
-    TZinfo = preferences.getString("TimezoneInfo","");
-    if (TZinfo != "") {
-        setenv("TZ",TZinfo.c_str(),1);
-        tzset();
-    }
     preferences.end();       
 
     if (write) write_settings();
