@@ -4,22 +4,59 @@ It can also receive these measurements directly from a (D)SMR5 smart meters P1 p
 These measurements are then sent every two seconds to the connected SmartEVSE(s).
 
 The Sensorbox2 uses a PIC microcontroller which does the CT measurements and sends this information to the ESP32.
-The ESP32 processes the P1 port (Smart Meter connection) data and RS485 communication to the SmartESVE.
-The PIC will be (re)programmed by the ESP32 module. At powerup the ESP32 looks for a PIC18F26K40.hex file in the /data folder and, when found programs the PIC18F26K40 microcontroller.
+The ESP32 sends both the P1 port (Smart Meter connection) and CT measurement data over the RS485 bus to the SmartEVSE.
 
-# Upgrading firmware
 
-Versions 2.1.0 and higher have wifi, webserver and MQTT active on your Sensorbox-2; it all works similarly to the SmartEVSEv3. To upgrade from your old, non-wifi Sensorbox-2 firmware,
-upgrade your SmartEVSE firmware to version v3.7.2 or higher.
 
-Once your SmartEVSEv3 detects your Sensorbox-2's old firmware, it will present the LCD screen with a new option: SB2 WIFI, with default <Disabled>.
-Select <Setup>, the Sensorbox will presents itself as a Wifi Acces Point "smartevse-xxxx"; the password is shown on the LCD screen.
+## Connecting to Wifi (and updating firmware)
+
+To upgrade your Sensorbox-2 firmware, first upgrade your SmartEVSE v3 firmware to version v3.7.2 or higher.
+
+Once your SmartEVSE v3 detects your Sensorbox-2's old firmware, it will present the LCD screen with a new option: **SB2 WIFI**, which is set to `Disabled` by default.
+Select `Setup` here, and the Sensorbox will presents itself as a Wifi Acces Point "smartevse-xxxx"; the password is shown on the LCD screen.
 Connect with your phone to that access point, go to http://192.168.4.1/ and configure your Wifi password.
 
-THIS IS A ONE TIME OPERATION!
+```
+Please note that if you don't see the **SB2 WIFI** option it is possible you have a sensorbox hardware version 1.0.6 with an even older firmware. 
+You can check the hardware version by removing the P1 cable from the sensorbox, and looking inside. the version is printed on the circuit board.
+In this case you will need to flash the firmware with a USB cable.
+```
 
-After you updated your Sensorbox-2 to v2.1.0 or higher, this function will not work anymore, and it will not be shown in your SmartEVSEv3 menu.
-You are supposed to update your firmware through the /update page on the Sensorbox-2 webserver, or through the ESPtouch or USB procedure as described in the SmartEVSEv3 docs.
+Once the Sensorbox2 is connected to your Wifi, you can find it's IP address on the SmartEVSE's **SB2 WIFI** menu option.
+Browse to this ip address, and you will be presented with the old Sensorbox2's wifi status page.<br>
+
+If you want to upgrade your Sensorbox2's firmware, browse to http://ip-address/update where "ip-address" is the ip address of the sensorbox2.<br>
+First update the spiffs partition, by uploading [spiffs.bin](https://github.com/SmartEVSE/Sensorbox-2/releases/download/v2.1.0/spiffs.bin)<br>
+Then proceed by uploading the [main firmware](https://github.com/SmartEVSE/Sensorbox-2/releases/download/v2.1.0/firmware.bin)<br>
+
+After you updated your Sensorbox-2 to v2.1.0 or higher, the SB2 WIFI option will not be shown anymore on the SmartEVSE menu.<br>
+
+On firmware version 2.1.0 or newer the procedure to configure WiFi has changed:<br>
+See [configuration](docs/configuration.md)
+
+## Status Led
+
+The status Led sequence depends on the working mode of the Sensorbox:
+
+1 blink:
+- Green: P1 measurement. Orange: CT measurement (no direction of currents)
+
+2 blinks:
+- Green: P1 measurement. Orange: CT measurement (no direction of currents)
+- Green: connected to WiFi, Red: waiting to connect 
+
+3 blinks:
+1. Phase L1: Green = export, Orange = import
+2. Phase L2: Green = export, Orange = import
+3. Phase L3: Green = export, Orange = import
+
+4 blinks:
+1. Phase L1: Green = export, Orange = import
+2. Phase L2: Green = export, Orange = import
+3. Phase L3: Green = export, Orange = import
+4. Green: connected to WiFi, Red: waiting to connect
+
+
 
 
 ## Modbus Registers
